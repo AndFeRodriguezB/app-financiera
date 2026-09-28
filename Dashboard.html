@@ -1,0 +1,106 @@
+<section id="pantalla-inicio" class="pantalla-app">
+  <div class="container pt-4 pb-4">
+    <p class="saludo-usuario mb-3">Hola <span id="saludo-nombre">···</span> 👋</p>
+
+    <div class="card tarjeta-balance shadow-sm text-white position-relative">
+      <button class="btn btn-link text-white position-absolute top-0 end-0 mt-3 me-3 p-0 shadow-none" id="btn-toggle-balance" onclick="toggleVisibilidad()">
+        <i class="fas fa-eye-slash fa-lg" id="icono-visibilidad"></i>
+      </button>
+
+      <div class="card-body text-center py-4">
+        <p class="mb-1 opacity-75 text-uppercase small fw-semibold">Balance actual</p>
+        <h1 class="cifra-balance mb-3 modo-privado" id="ui-balance">···</h1>
+
+        <div class="separador-tarjeta"></div>
+
+        <p class="mb-1 opacity-75 text-uppercase small fw-semibold mt-3">Saldo disponible</p>
+        <h3 class="cifra-saldo-disponible mb-3 modo-privado" id="ui-saldo-disponible">···</h3>
+
+        <button class="btn btn-light btn-sm px-4 fw-semibold" type="button" data-bs-toggle="modal" data-bs-target="#modalResumenDetalle">
+          Ver detalle
+        </button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Popup Modal: Resumen financiero detallado + historial mensual -->
+<div class="modal fade" id="modalResumenDetalle" tabindex="-1" aria-labelledby="modalResumenDetalleLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="modalResumenDetalleLabel">Resumen financiero</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <span class="fw-semibold" id="resumen-periodo-actual">Mes actual</span>
+          <button class="btn btn-link btn-sm p-0" type="button" id="btn-cambiar-mes">📅 Ver otro mes</button>
+        </div>
+
+        <div class="row g-2 mb-3 d-none" id="selector-mes">
+          <div class="col-8">
+            <input type="month" class="form-control form-control-sm" id="input-mes-historial">
+          </div>
+          <div class="col-4">
+            <button class="btn btn-primary btn-sm w-100" type="button" id="btn-consultar-mes">Consultar</button>
+          </div>
+          <div class="col-12">
+            <button class="btn btn-link btn-sm p-0" type="button" id="btn-volver-mes-actual">Volver al mes actual</button>
+          </div>
+        </div>
+
+        <div id="resumen-cargando" class="text-center text-muted py-3 d-none">
+          <div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
+          Calculando...
+        </div>
+
+        <div id="resumen-contenido">
+          <div class="fila-resumen">
+            <span>Balance</span>
+            <strong id="detalle-balance">$0</strong>
+          </div>
+          <div class="fila-resumen">
+            <span>Saldo disponible</span>
+            <strong id="detalle-saldo-disponible">$0</strong>
+          </div>
+          <div class="fila-resumen">
+            <span>Total de ingresos</span>
+            <strong class="text-success" id="detalle-ingresos">$0</strong>
+          </div>
+          <div class="fila-resumen">
+            <span>Gastos propios</span>
+            <strong class="text-danger" id="detalle-gastos-propios">$0</strong>
+          </div>
+
+          <div id="bloque-compartidos" class="d-none">
+            <hr>
+            <div class="fila-resumen">
+              <span>Gastos compartidos (total hogar)</span>
+              <strong id="detalle-gastos-compartidos">$0</strong>
+            </div>
+            <div class="fila-resumen">
+              <span>Aporte que debía realizar</span>
+              <strong id="detalle-aporte-esperado">$0</strong>
+            </div>
+            <div class="fila-resumen">
+              <span>Aporte total realizado</span>
+              <strong id="detalle-aporte-realizado">$0</strong>
+            </div>
+            <div class="fila-resumen">
+              <span>Saldo pendiente por aportar</span>
+              <strong class="text-danger" id="detalle-saldo-pendiente-aportar">$0</strong>
+            </div>
+            <div class="fila-resumen">
+              <span>Saldo pendiente por recibir</span>
+              <strong class="text-success" id="detalle-saldo-pendiente-recibir">$0</strong>
+            </div>
+            <p class="small text-muted mt-2 mb-0">Los gastos compartidos se calculan sobre el acumulado del mes, no se reparten al momento de registrar cada movimiento.</p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>

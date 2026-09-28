@@ -1,0 +1,21 @@
+<section id="pantalla-analisis" class="pantalla-app d-none">
+  <div class="container pt-4 pb-4">
+    <h6 class="titulo-seccion mb-3">Gastos propios por categoría</h6>
+    <div class="card shadow-sm mb-4">
+      <div class="card-body">
+        <canvas id="grafica-propios" height="220"></canvas>
+        <p class="text-center text-muted small mb-0 mt-2 d-none" id="analisis-sin-datos-propios">Aún no hay gastos propios este mes.</p>
+      </div>
+    </div>
+
+    <div id="bloque-analisis-compartidos" class="d-none">
+      <h6 class="titulo-seccion mb-3">Gastos compartidos por categoría</h6>
+      <div class="card shadow-sm mb-4">
+        <div class="card-body">
+          <canvas id="grafica-compartidos" height="220"></canvas>
+          <p class="text-center text-muted small mb-0 mt-2 d-none" id="analisis-sin-datos-compartidos">Aún no hay gastos compartidos este mes.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

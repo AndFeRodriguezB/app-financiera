@@ -1,0 +1,186 @@
+<script>
+  /**
+   * MovimientosUI.html
+   * Única responsabilidad: manipular el DOM del historial y de los dos
+   * formularios (gasto/ingreso). No decide reglas de negocio, no llama a
+   * Apps Script directamente.
+   */
+  const MovimientosUI = {
+    llenarSelectPagadoPor(usuarios) {
+      const select = document.getElementById('gasto-pagado-por');
+      select.innerHTML = '';
+      usuarios.forEach(u => {
+        const nombre = Utilidades.obtenerCampo(u, 'Nombre', 'nombre');
+        if (!nombre) return;
+        const opcion = document.createElement('option');
+        opcion.value = nombre;
+        opcion.textContent = nombre;
+        select.appendChild(opcion);
+      });
+    },
+
+    mostrarCamposMultiUsuario(esMulti) {
+      document.getElementById('gasto-div-compartido').classList.toggle('d-none', !esMulti);
+      document.getElementById('gasto-div-pagado-por').classList.toggle('d-none', !esMulti);
+    },
+
+    llenarSelectCategorias(idSelect, categorias) {
+      const select = document.getElementById(idSelect);
+      const valorPrevio = select.value;
+      const nombres = [...new Set(categorias.map(c => Utilidades.obtenerCampo(c, 'Categoria', 'categoria')).filter(Boolean))];
+      select.innerHTML = '<option value="" selected disabled>Selecciona una categoría...</option>';
+      nombres.forEach(nombre => {
+        const opcion = document.createElement('option');
+        opcion.value = nombre;
+        opcion.textContent = nombre;
+        select.appendChild(opcion);
+      });
+      if (valorPrevio && nombres.includes(valorPrevio)) select.value = valorPrevio;
+    },
+
+    llenarSelectCuentas(idSelect, cuentas) {
+      const select = document.getElementById(idSelect);
+      select.innerHTML = '<option value="" selected disabled>Selecciona una cuenta...</option>';
+      cuentas.forEach(c => {
+        const nombre = Utilidades.obtenerCampo(c, 'Nombre', 'nombre');
+        if (!nombre) return;
+        const opcion = document.createElement('option');
+        opcion.value = nombre;
+        opcion.textContent = nombre;
+        select.appendChild(opcion);
+      });
+    },
+
+    mostrarSubcategorias(subcategorias) {
+      const div = document.getElementById('gasto-div-subcategoria');
+      const select = document.getElementById('gasto-subcategoria');
+      select.innerHTML = '<option value="" selected disabled>Selecciona un detalle...</option>';
+      if (subcategorias.length > 0) {
+        subcategorias.forEach(s => {
+          const opcion = document.createElement('option');
+          opcion.value = s;
+          opcion.textContent = s;
+          select.appendChild(opcion);
+        });
+        div.classList.remove('d-none');
+        select.required = true;
+      } else {
+        div.classList.add('d-none');
+        select.required = false;
+      }
+    },
+
+    abrirFormularioGasto(movimiento) {
+      const form = document.getElementById('formulario-gasto');
+      form.reset();
+      document.getElementById('gasto-id-edicion').value = movimiento ? movimiento.id : '';
+      document.getElementById('btn-eliminar-gasto').classList.toggle('d-none', !movimiento);
+      document.getElementById('btn-guardar-gasto').textContent = movimiento ? 'Guardar cambios' : 'Guardar';
+
+      if (movimiento) {
+        document.getElementById('gasto-fecha').value = movimiento.fecha;
+        document.getElementById('gasto-valor').value = movimiento.valor;
+        document.getElementById('gasto-pagado-por').value = movimiento.pagadoPor;
+        MovimientosService.filtrarCuentasPorPagador(movimiento.pagadoPor);
+        document.getElementById('gasto-cuenta').value = movimiento.cuenta;
+        document.getElementById('gasto-categoria').value = movimiento.categoria;
+        MovimientosService.filtrarSubcategorias(movimiento.categoria);
+        document.getElementById('gasto-subcategoria').value = movimiento.subcategoria || '';
+        document.getElementById('gasto-descripcion').value = movimiento.descripcion || '';
+        document.getElementById('gasto-es-compartido').checked = movimiento.tipoGasto === 'Compartido';
+      } else {
+        document.getElementById('gasto-fecha').value = Utilidades.fechaLocalISO();
+        document.getElementById('gasto-div-subcategoria').classList.add('d-none');
+        if (!Store.shared.esMultiUsuario && Store.catalogos.usuarios.length === 1) {
+          const nombreUnico = Utilidades.obtenerCampo(Store.catalogos.usuarios[0], 'Nombre', 'nombre');
+          document.getElementById('gasto-pagado-por').value = nombreUnico;
+          MovimientosService.filtrarCuentasPorPagador(nombreUnico);
+        } else if (Store.usuarioActual && Store.usuarioActual.Nombre) {
+          // Conveniencia: preselecciona a quien tiene la sesión abierta (se puede cambiar)
+          const nombreSesion = Utilidades.obtenerCampo(Store.usuarioActual, 'Nombre', 'nombre');
+          document.getElementById('gasto-pagado-por').value = nombreSesion;
+          MovimientosService.filtrarCuentasPorPagador(nombreSesion);
+        }
+      }
+
+      new bootstrap.Modal(document.getElementById('modalGasto')).show();
+    },
+
+    abrirFormularioIngreso(movimiento) {
+      const form = document.getElementById('formulario-ingreso');
+      form.reset();
+      document.getElementById('ingreso-id-edicion').value = movimiento ? movimiento.id : '';
+      document.getElementById('btn-eliminar-ingreso').classList.toggle('d-none', !movimiento);
+      document.getElementById('btn-guardar-ingreso').textContent = movimiento ? 'Guardar cambios' : 'Guardar';
+
+      if (movimiento) {
+        document.getElementById('ingreso-fecha').value = movimiento.fecha;
+        document.getElementById('ingreso-valor').value = movimiento.valor;
+        document.getElementById('ingreso-categoria').value = movimiento.categoria;
+        document.getElementById('ingreso-descripcion').value = movimiento.descripcion || '';
+        document.getElementById('ingreso-cuenta').value = movimiento.cuenta;
+      } else {
+        document.getElementById('ingreso-fecha').value = Utilidades.fechaLocalISO();
+      }
+
+      new bootstrap.Modal(document.getElementById('modalIngreso')).show();
+    },
+
+    cerrarFormulario(prefijo) {
+      const el = document.getElementById(prefijo === 'gasto' ? 'modalGasto' : 'modalIngreso');
+      const instancia = bootstrap.Modal.getInstance(el);
+      if (instancia) instancia.hide();
+    },
+
+    bloquearBoton(idBoton, bloqueado) {
+      const boton = document.getElementById(idBoton);
+      if (!boton) return;
+      boton.disabled = bloqueado;
+      if (bloqueado) {
+        boton.dataset.textoOriginal = boton.innerHTML;
+        boton.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+      } else if (boton.dataset.textoOriginal) {
+        boton.innerHTML = boton.dataset.textoOriginal;
+      }
+    },
+
+    mostrarCargandoHistorial() {
+      document.getElementById('lista-movimientos').innerHTML = `
+        <div class="list-group-item text-center text-muted py-4">
+          <div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
+          Cargando movimientos...
+        </div>`;
+    },
+
+    renderizarLista(movimientos, agregar) {
+      const contenedor = document.getElementById('lista-movimientos');
+      if (!agregar) contenedor.innerHTML = '';
+
+      if (movimientos.length === 0 && !agregar) {
+        contenedor.innerHTML = '<div class="list-group-item text-center text-muted py-4">Aún no tienes movimientos registrados. Usa el botón "+" para crear el primero.</div>';
+        return;
+      }
+
+      movimientos.forEach(mov => {
+        const esIngreso = Utilidades.esCategoriaIngreso(Store.catalogos.categorias, mov.categoria);
+
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'list-group-item list-group-item-action d-flex justify-content-between align-items-center';
+        item.innerHTML = `
+          <div>
+            <div class="fw-semibold">${mov.categoria}${mov.subcategoria ? ' · ' + mov.subcategoria : ''}</div>
+            <div class="small text-muted">${mov.fecha}${mov.descripcion ? ' · ' + mov.descripcion : ''}</div>
+          </div>
+          <strong class="${esIngreso ? 'text-success' : 'text-danger'}">${esIngreso ? '+' : '-'}${Utilidades.formatearMoneda(mov.valor)}</strong>
+        `;
+        item.addEventListener('click', () => MovimientosService.editarMovimiento(mov.id));
+        contenedor.appendChild(item);
+      });
+    },
+
+    actualizarBotonVerMas() {
+      document.getElementById('btn-ver-mas').classList.toggle('d-none', !Store.meta.historialHayMas);
+    }
+  };
+</script>

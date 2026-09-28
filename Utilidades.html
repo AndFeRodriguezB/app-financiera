@@ -1,0 +1,57 @@
+<script>
+  /**
+   * Utilidades.html
+   * Funciones auxiliares compartidas por los módulos de UI/Service del
+   * frontend. Ninguna de estas funciones llama a google.script.run: eso es
+   * responsabilidad exclusiva de los archivos "*API.html".
+   */
+  const Utilidades = {
+    formatoMoneda: new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }),
+
+    formatearMoneda(valor) {
+      return this.formatoMoneda.format(Number(valor) || 0);
+    },
+
+    obtenerCampo(objeto, ...nombres) {
+      for (const nombre of nombres) {
+        const valor = objeto[nombre];
+        if (valor !== undefined && valor !== null && valor !== '') return valor;
+      }
+      return undefined;
+    },
+
+    /**
+     * Fecha de hoy en formato ISO "AAAA-MM-DD" usando componentes LOCALES
+     * (no toISOString(), que convierte a UTC y puede mostrar el día
+     * equivocado en horas de la noche en Colombia).
+     */
+    fechaLocalISO(fecha) {
+      const d = fecha || new Date();
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const dia = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${dia}`;
+    },
+
+    /**
+     * Determina si una categoría es de tipo Ingreso (mismo criterio que usa
+     * el backend en CalculosFinancieros.gs, para que la clasificación visual
+     * de un movimiento sea siempre consistente con los cálculos del resumen).
+     */
+    esCategoriaIngreso(categorias, nombreCategoria) {
+      const info = categorias.find(c => this.obtenerCampo(c, 'Categoria', 'categoria') === nombreCategoria);
+      const tipo = info ? this.obtenerCampo(info, 'Tipo', 'tipo') : undefined;
+      return tipo === 'Ingreso' || nombreCategoria === 'Ingreso';
+    },
+
+    mostrarError(mensaje) {
+      console.error(mensaje);
+      const contenedor = document.getElementById('banner-error');
+      if (!contenedor) { alert(mensaje); return; }
+      contenedor.textContent = mensaje;
+      contenedor.classList.remove('d-none');
+      clearTimeout(this._timeoutError);
+      this._timeoutError = setTimeout(() => contenedor.classList.add('d-none'), 5000);
+    }
+  };
+</script>

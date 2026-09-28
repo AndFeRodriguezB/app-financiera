@@ -1,0 +1,248 @@
+<script>
+  /**
+   * MovimientosService.html
+   * Lógica de negocio del módulo Movimientos: arma los formularios inteligentes
+   * (sección 15 del documento maestro), valida, decide crear vs. editar, y
+   * mantiene el historial/dashboard sincronizados después de cada mutación.
+   */
+  const MovimientosService = {
+    // Se llama UNA sola vez, después de la carga inicial (ver DashboardService).
+    configurarFormularios() {
+      const catalogos = Store.catalogos;
+      const esMulti = Store.shared.esMultiUsuario;
+
+      const hoyISO = Utilidades.fechaLocalISO();
+      document.getElementById('gasto-fecha').value = hoyISO;
+      document.getElementById('ingreso-fecha').value = hoyISO;
+
+      MovimientosUI.llenarSelectPagadoPor(catalogos.usuarios);
+      MovimientosUI.mostrarCamposMultiUsuario(esMulti);
+
+      const categoriasGasto = catalogos.categorias.filter(c => Utilidades.obtenerCampo(c, 'Tipo', 'tipo') !== 'Ingreso');
+      const categoriasIngreso = catalogos.categorias.filter(c => Utilidades.obtenerCampo(c, 'Tipo', 'tipo') === 'Ingreso');
+
+      MovimientosUI.llenarSelectCategorias('gasto-categoria', categoriasGasto);
+      MovimientosUI.llenarSelectCategorias('ingreso-categoria', categoriasIngreso);
+      MovimientosUI.llenarSelectCuentas('ingreso-cuenta', catalogos.cuentas);
+
+      if (!esMulti && catalogos.usuarios.length === 1) {
+        const nombreUnico = Utilidades.obtenerCampo(catalogos.usuarios[0], 'Nombre', 'nombre');
+        document.getElementById('gasto-pagado-por').value = nombreUnico;
+        this.filtrarCuentasPorPagador(nombreUnico);
+      }
+
+      document.getElementById('gasto-pagado-por').addEventListener('change', e => {
+        this.filtrarCuentasPorPagador(e.target.value);
+      });
+
+      document.getElementById('gasto-categoria').addEventListener('change', e => {
+        this.filtrarSubcategorias(e.target.value);
+      });
+
+      document.getElementById('btn-guardar-gasto').addEventListener('click', () => this.guardarGasto());
+      document.getElementById('btn-guardar-ingreso').addEventListener('click', () => this.guardarIngreso());
+      document.getElementById('btn-eliminar-gasto').addEventListener('click', () => this.confirmarEliminar('gasto'));
+      document.getElementById('btn-eliminar-ingreso').addEventListener('click', () => this.confirmarEliminar('ingreso'));
+      document.getElementById('btn-ver-mas').addEventListener('click', () => this.cargarMasHistorial());
+    },
+
+    filtrarCuentasPorPagador(nombrePagador) {
+      const cuentas = Store.catalogos.cuentas.filter(c => {
+        const propietario = Utilidades.obtenerCampo(c, 'Propietario', 'propietario');
+        return propietario === nombrePagador || propietario === 'General';
+      });
+      MovimientosUI.llenarSelectCuentas('gasto-cuenta', cuentas);
+    },
+
+    filtrarSubcategorias(nombreCategoria) {
+      const subcategorias = [...new Set(
+        Store.catalogos.categorias
+          .filter(c => Utilidades.obtenerCampo(c, 'Categoria', 'categoria') === nombreCategoria)
+          .map(c => Utilidades.obtenerCampo(c, 'Subcategoria', 'subcategoria'))
+          .filter(s => s && s.toString().trim() !== '')
+      )];
+      MovimientosUI.mostrarSubcategorias(subcategorias);
+    },
+
+    validarCamposComunes(datos, etiqueta) {
+      if (!datos.fecha || !datos.valor || !datos.cuenta || !datos.categoria) {
+        Utilidades.mostrarError(`Por favor llena todos los campos obligatorios del ${etiqueta}.`);
+        return false;
+      }
+      if (Number(datos.valor) <= 0) {
+        Utilidades.mostrarError('El valor debe ser mayor que cero.');
+        return false;
+      }
+      return true;
+    },
+
+    guardarGasto() {
+      const idEdicion = document.getElementById('gasto-id-edicion').value;
+      const esCompartido = document.getElementById('gasto-es-compartido').checked;
+      let valorVisualGasto = document.getElementById('gasto-valor').value;
+      let valorLimpioGasto = valorVisualGasto.replace(/\./g, '');
+      let valorNumericoGasto = parseFloat(valorLimpioGasto);
+
+      const datos = {
+        fecha: document.getElementById('gasto-fecha').value,
+        valor: valorNumericoGasto,
+        cuenta: document.getElementById('gasto-cuenta').value,
+        categoria: document.getElementById('gasto-categoria').value,
+        subcategoria: document.getElementById('gasto-subcategoria').value || '',
+        descripcion: document.getElementById('gasto-descripcion').value || '',
+        pagadoPor: document.getElementById('gasto-pagado-por').value,
+        tipoGasto: esCompartido ? 'Compartido' : 'Propio'
+      };
+
+      if (!this.validarCamposComunes(datos, 'gasto')) return;
+
+      MovimientosUI.bloquearBoton('btn-guardar-gasto', true);
+
+      const alTerminar = () => {
+        MovimientosUI.bloquearBoton('btn-guardar-gasto', false);
+        MovimientosUI.cerrarFormulario('gasto');
+        this.despuesDeGuardar();
+      };
+      const alFallar = (error) => {
+        MovimientosUI.bloquearBoton('btn-guardar-gasto', false);
+        Utilidades.mostrarError('No se pudo guardar el gasto: ' + error.message);
+      };
+
+      if (idEdicion) {
+        MovimientosAPI.actualizar(Number(idEdicion), datos, alTerminar, alFallar);
+      } else {
+        MovimientosAPI.registrar(datos, alTerminar, alFallar);
+      }
+    },
+
+    guardarIngreso() {
+      const idEdicion = document.getElementById('ingreso-id-edicion').value;
+      let valorVisual = document.getElementById('ingreso-valor').value;
+      let valorLimpio = valorVisual.replace(/\./g, '');
+      let valorNumerico = parseFloat(valorLimpio);
+
+      const datos = {
+        fecha: document.getElementById('ingreso-fecha').value,
+        valor: valorNumerico,
+        cuenta: document.getElementById('ingreso-cuenta').value,
+        categoria: document.getElementById('ingreso-categoria').value,
+        descripcion: document.getElementById('ingreso-descripcion').value || '',
+        tipoGasto: 'Propio'
+      };
+
+      if (!this.validarCamposComunes(datos, 'ingreso')) return;
+
+      MovimientosUI.bloquearBoton('btn-guardar-ingreso', true);
+
+      const alTerminar = () => {
+        MovimientosUI.bloquearBoton('btn-guardar-ingreso', false);
+        MovimientosUI.cerrarFormulario('ingreso');
+        this.despuesDeGuardar();
+      };
+      const alFallar = (error) => {
+        MovimientosUI.bloquearBoton('btn-guardar-ingreso', false);
+        Utilidades.mostrarError('No se pudo guardar el ingreso: ' + error.message);
+      };
+
+      if (idEdicion) {
+        MovimientosAPI.actualizar(Number(idEdicion), datos, alTerminar, alFallar);
+      } else {
+        MovimientosAPI.registrar(datos, alTerminar, alFallar);
+      }
+    },
+
+    // Después de crear/editar/eliminar: refresca historial (primera página)
+    // y el resumen financiero. Si Análisis ya se había cargado, se marca
+    // para recalcularse la próxima vez que se visite.
+    despuesDeGuardar() {
+      Store.meta.historialOffset = 0;
+      Store.meta.historialHayMas = true;
+      this.cargarHistorialInicial();
+
+      DashboardAPI.refrescarResumen(
+        (resumen) => DashboardService.procesarResumenActualizado(resumen),
+        (error) => console.error('No se pudo refrescar el resumen:', error)
+      );
+
+      if (Store.meta.analisisCargado) {
+        Store.meta.analisisCargado = false;
+        if (Store.meta.pantallaActual === 'analisis') AnalisisUI.cargar();
+      }
+    },
+
+    cargarHistorialInicial() {
+      MovimientosUI.mostrarCargandoHistorial();
+      MovimientosAPI.obtenerHistorial(0, Store.meta.tamanoPagina, (resultado) => {
+        Store.movimientos = resultado.movimientos;
+        Store.meta.historialOffset = resultado.movimientos.length;
+        Store.meta.historialHayMas = resultado.hayMas;
+        Store.meta.historialCargado = true;
+        MovimientosUI.renderizarLista(Store.movimientos, false);
+        MovimientosUI.actualizarBotonVerMas();
+      }, (error) => Utilidades.mostrarError('No se pudo cargar el historial: ' + error.message));
+    },
+
+    cargarMasHistorial() {
+      MovimientosUI.bloquearBoton('btn-ver-mas', true);
+      MovimientosAPI.obtenerHistorial(Store.meta.historialOffset, Store.meta.tamanoPagina, (resultado) => {
+        Store.movimientos = Store.movimientos.concat(resultado.movimientos);
+        Store.meta.historialOffset += resultado.movimientos.length;
+        Store.meta.historialHayMas = resultado.hayMas;
+        MovimientosUI.renderizarLista(resultado.movimientos, true);
+        MovimientosUI.actualizarBotonVerMas();
+        MovimientosUI.bloquearBoton('btn-ver-mas', false);
+      }, (error) => {
+        Utilidades.mostrarError('No se pudo cargar más movimientos: ' + error.message);
+        MovimientosUI.bloquearBoton('btn-ver-mas', false);
+      });
+    },
+
+    editarMovimiento(id) {
+      const movimiento = Store.movimientos.find(m => m.id === id);
+      if (!movimiento) return;
+
+      const esIngreso = Utilidades.esCategoriaIngreso(Store.catalogos.categorias, movimiento.categoria);
+      if (esIngreso) {
+        MovimientosUI.abrirFormularioIngreso(movimiento);
+      } else {
+        MovimientosUI.abrirFormularioGasto(movimiento);
+      }
+    },
+
+    confirmarEliminar(prefijo) {
+      const idCampo = document.getElementById(prefijo + '-id-edicion').value;
+      if (!idCampo) return;
+      if (!confirm('¿Seguro que quieres eliminar este movimiento? Esta acción no se puede deshacer.')) return;
+
+      const id = Number(idCampo);
+      const idBoton = prefijo === 'gasto' ? 'btn-eliminar-gasto' : 'btn-eliminar-ingreso';
+      MovimientosUI.bloquearBoton(idBoton, true);
+
+      MovimientosAPI.eliminar(id, () => {
+        MovimientosUI.bloquearBoton(idBoton, false);
+        MovimientosUI.cerrarFormulario(prefijo);
+        this.despuesDeGuardar();
+      }, (error) => {
+        MovimientosUI.bloquearBoton(idBoton, false);
+        Utilidades.mostrarError('No se pudo eliminar: ' + error.message);
+      });
+    }
+  };
+
+  // Capturamos todos los campos con la clase 'input-moneda'
+  const inputsMoneda = document.querySelectorAll('.input-moneda')
+
+  // Recorre cada campo y aplica formato en tiempo real
+  inputsMoneda.forEach(function(input){
+    input.addEventListener('input', function(e) {
+      let valorLimpio = this.value.replace(/\D/g, '');
+
+      if (valorLimpio !== ''){
+        this.value = new Intl.NumberFormat('es-CO').format(valorLimpio);
+      } else {
+        this.value = '';
+      }
+    });
+  });
+  
+</script>

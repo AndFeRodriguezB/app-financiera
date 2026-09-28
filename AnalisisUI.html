@@ -1,0 +1,60 @@
+<script>
+  /**
+   * AnalisisUI.html
+   * Módulo de Análisis: para el alcance actual (solo dos gráficas de solo
+   * lectura) se mantiene en un único archivo en vez del patrón de 4 capas.
+   * Si este módulo crece (tendencias, presupuestos, comparativos), debe
+   * dividirse siguiendo el mismo patrón que Dashboard/Movimientos.
+   */
+  const AnalisisUI = {
+    colores: ['#4F46E5', '#10B981', '#F43F5E', '#F59E0B', '#0EA5E9', '#8B5CF6', '#FB923C', '#14B8A6', '#EC4899', '#84CC16'],
+    graficas: {},
+
+    cargar() {
+      google.script.run
+        .withSuccessHandler(datos => this.renderizar(datos))
+        .withFailureHandler(error => Utilidades.mostrarError('No se pudo cargar el análisis: ' + error.message))
+        .obtenerGastosPorCategoria();
+    },
+
+    renderizar(datos) {
+      Store.meta.analisisCargado = true;
+      this._dibujar('grafica-propios', datos.propios, 'analisis-sin-datos-propios');
+
+      const bloqueCompartidos = document.getElementById('bloque-analisis-compartidos');
+      if (Store.shared.esMultiUsuario) {
+        bloqueCompartidos.classList.remove('d-none');
+        this._dibujar('grafica-compartidos', datos.compartidos, 'analisis-sin-datos-compartidos');
+      } else {
+        bloqueCompartidos.classList.add('d-none');
+      }
+    },
+
+    _dibujar(idCanvas, datosCategoria, idMensajeVacio) {
+      const canvas = document.getElementById(idCanvas);
+      if (!canvas) return;
+
+      const etiquetas = Object.keys(datosCategoria || {});
+      const valores = Object.values(datosCategoria || {});
+
+      document.getElementById(idMensajeVacio).classList.toggle('d-none', etiquetas.length > 0);
+      canvas.classList.toggle('d-none', etiquetas.length === 0);
+
+      if (this.graficas[idCanvas]) this.graficas[idCanvas].destroy();
+      if (etiquetas.length === 0) return;
+
+      this.graficas[idCanvas] = new Chart(canvas.getContext('2d'), {
+        type: 'doughnut',
+        data: {
+          labels: etiquetas,
+          datasets: [{ data: valores, backgroundColor: this.colores, borderWidth: 0, cutout: '70%' }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { position: 'bottom', labels: { padding: 16, font: { size: 12 } } } }
+        }
+      });
+    }
+  };
+</script>

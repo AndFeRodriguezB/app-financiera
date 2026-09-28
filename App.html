@@ -1,0 +1,16 @@
+<script>
+  /**
+   * App.html
+   * Orquestador de arranque. Debe incluirse AL FINAL de Index.html: para
+   * cuando este script corre, todos los demás módulos ya definieron sus
+   * funciones y es seguro usarlos.
+   */
+  document.addEventListener('DOMContentLoaded', () => {
+    NavegacionUI.init();
+
+    DashboardAPI.cargarInicio(
+      (datos) => DashboardService.procesarDatosIniciales(datos),
+      (error) => Utilidades.mostrarError('No se pudo conectar con la aplicación: ' + error.message)
+    );
+  });
+</script>

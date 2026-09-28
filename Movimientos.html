@@ -1,0 +1,135 @@
+<section id="pantalla-movimientos" class="pantalla-app d-none">
+  <div class="container pt-4 pb-4">
+    <h6 class="titulo-seccion mb-3">Movimientos</h6>
+    <div id="lista-movimientos" class="list-group shadow-sm mb-3">
+      <div class="list-group-item text-center text-muted py-4">
+        <div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
+        Cargando movimientos...
+      </div>
+    </div>
+    <div class="text-center mb-4">
+      <button class="btn btn-outline-primary d-none" id="btn-ver-mas" type="button">Ver más movimientos</button>
+    </div>
+  </div>
+</section>
+
+<!-- Popup Modal: Registrar / editar GASTO (antes era un Offcanvas) -->
+<div class="modal fade" id="modalGasto" tabindex="-1" aria-labelledby="modalGastoLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="modalGastoLabel"><i class="fas fa-arrow-trend-down me-2 text-danger"></i>Nuevo gasto</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <form id="formulario-gasto" autocomplete="off">
+          <input type="hidden" id="gasto-id-edicion">
+
+          <div class="mb-3 d-none" id="gasto-div-pagado-por">
+            <label class="form-label campo-label">Pagado por</label>
+            <select class="form-select" id="gasto-pagado-por"></select>
+          </div>
+
+          <div class="mb-3 d-none" id="gasto-div-compartido">
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" id="gasto-es-compartido">
+              <label class="form-check-label campo-label" for="gasto-es-compartido">¿Es un gasto compartido?</label>
+            </div>
+          </div>
+
+          <div class="row mb-3">
+            <div class="col-6">
+              <label class="form-label campo-label">Fecha</label>
+              <input type="date" class="form-control" id="gasto-fecha" required>
+            </div>
+            <div class="col-6">
+              <label class="form-label campo-label">Valor ($)</label>
+              <input type="text" inputmode="numeric" class="form-control input-moneda" id="gasto-valor" placeholder="Ej: 50.000" required>
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label campo-label">Cuenta origen</label>
+            <select class="form-select" id="gasto-cuenta" required>
+              <option value="" selected disabled>Selecciona una cuenta...</option>
+            </select>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label campo-label">Categoría</label>
+            <select class="form-select" id="gasto-categoria" required>
+              <option value="" selected disabled>Selecciona una categoría...</option>
+            </select>
+          </div>
+
+          <div class="mb-3 d-none" id="gasto-div-subcategoria">
+            <label class="form-label campo-label">Subcategoría</label>
+            <select class="form-select" id="gasto-subcategoria">
+              <option value="" selected disabled>Selecciona un detalle...</option>
+            </select>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label campo-label">Descripción (opcional)</label>
+            <textarea class="form-control" id="gasto-descripcion" rows="2" placeholder="Nota rápida..."></textarea>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer d-flex justify-content-between align-items-center">
+        <button type="button" class="btn btn-outline-danger d-none" id="btn-eliminar-gasto">Eliminar</button>
+        <button type="button" class="btn btn-danger px-4 ms-auto" id="btn-guardar-gasto">Guardar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Popup Modal: Registrar / editar INGRESO (antes era un Offcanvas) -->
+<div class="modal fade" id="modalIngreso" tabindex="-1" aria-labelledby="modalIngresoLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="modalIngresoLabel"><i class="fas fa-arrow-trend-up me-2 text-success"></i>Nuevo ingreso</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <form id="formulario-ingreso" autocomplete="off">
+          <input type="hidden" id="ingreso-id-edicion">
+
+          <div class="row mb-3">
+            <div class="col-6">
+              <label class="form-label campo-label">Fecha</label>
+              <input type="date" class="form-control" id="ingreso-fecha" required>
+            </div>
+            <div class="col-6">
+              <label class="form-label campo-label">Valor ($)</label>
+              <input type="text" inputmode="numeric" class="form-control input-moneda" id="ingreso-valor" placeholder="Ej: 50.000" required>
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label campo-label">Cuenta destino</label>
+            <select class="form-select" id="ingreso-cuenta" required>
+              <option value="" selected disabled>Selecciona una cuenta...</option>
+            </select>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label campo-label">Categoría</label>
+            <select class="form-select" id="ingreso-categoria" required>
+              <option value="" selected disabled>Selecciona una categoría...</option>
+            </select>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label campo-label">Descripción (opcional)</label>
+            <textarea class="form-control" id="ingreso-descripcion" rows="2" placeholder="Nota rápida..."></textarea>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer d-flex justify-content-between align-items-center">
+        <button type="button" class="btn btn-outline-danger d-none" id="btn-eliminar-ingreso">Eliminar</button>
+        <button type="button" class="btn btn-success px-4 ms-auto" id="btn-guardar-ingreso">Guardar</button>
+      </div>
+    </div>
+  </div>
+</div>

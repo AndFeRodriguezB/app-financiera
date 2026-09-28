@@ -1,0 +1,34 @@
+<script>
+  /**
+   * Store.html
+   * Único objeto de estado global de la aplicación (sección 7 del documento
+   * maestro). Ningún otro archivo debe crear variables globales adicionales:
+   * todo lo que necesite sobrevivir entre funciones vive aquí dentro.
+   *
+   * Se declara con "const" UNA sola vez en todo el proyecto. El resto de los
+   * módulos solo leen o mutan sus propiedades (Store.dashboard = ...), nunca
+   * lo vuelven a declarar (eso rompería la app con un SyntaxError).
+   */
+  const Store = {
+    usuarioActual: {},
+    dashboard: {},
+    catalogos: {
+      usuarios: [],
+      cuentas: [],
+      categorias: [],
+      presupuestos: []
+    },
+    movimientos: [],
+    shared: {
+      esMultiUsuario: false
+    },
+    meta: {
+      pantallaActual: 'inicio',
+      historialCargado: false,
+      historialOffset: 0,
+      historialHayMas: true,
+      tamanoPagina: 10,
+      analisisCargado: false
+    }
+  };
+</script>

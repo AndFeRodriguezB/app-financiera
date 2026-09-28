@@ -1,0 +1,96 @@
+<script>
+  /**
+   * DashboardService.html
+   * Lógica de negocio del Dashboard: procesa la respuesta del backend y
+   * coordina el selector de "ver otro mes" (retroalimentación punto 7).
+   * El mes actual siempre se calcula con la fecha del navegador de la
+   * persona (coincide con el mes que el backend usa por defecto).
+   */
+  const DashboardService = {
+    mesActual: new Date().getMonth() + 1,
+    anioActual: new Date().getFullYear(),
+    viendoMesActual: true,
+
+    procesarDatosIniciales(datos) {
+      Store.usuarioActual = datos.usuarioActual || {};
+      Store.catalogos = datos.catalogos || Store.catalogos;
+      Store.dashboard = datos.dashboard || {};
+      Store.shared.esMultiUsuario = !!Store.dashboard.esMultiUsuario;
+
+      DashboardUI.renderizarInicio();
+      DashboardUI.renderizarDetalle(Store.dashboard);
+      MovimientosService.configurarFormularios();
+      this._prepararSelectorDeMes();
+    },
+
+    procesarResumenActualizado(resumen) {
+      Store.dashboard = resumen || {};
+      Store.shared.esMultiUsuario = !!Store.dashboard.esMultiUsuario;
+      if (Store.meta.pantallaActual === 'inicio') DashboardUI.renderizarInicio();
+      if (this.viendoMesActual) DashboardUI.renderizarDetalle(Store.dashboard);
+    },
+
+    _prepararSelectorDeMes() {
+      const input = document.getElementById('input-mes-historial');
+      input.value = `${this.anioActual}-${String(this.mesActual).padStart(2, '0')}`;
+      input.max = input.value; // no tiene sentido consultar meses futuros
+
+      document.getElementById('btn-cambiar-mes').addEventListener('click', () => {
+        DashboardUI.alternarSelectorDeMes(true);
+      });
+
+      document.getElementById('btn-consultar-mes').addEventListener('click', () => this.consultarMesSeleccionado());
+      document.getElementById('btn-volver-mes-actual').addEventListener('click', () => this.volverAMesActual());
+
+      // Cada vez que se abre el modal, vuelve a partir del mes actual en
+      // vez de quedarse en el último mes histórico que se haya consultado.
+      document.getElementById('modalResumenDetalle').addEventListener('show.bs.modal', () => {
+        if (!this.viendoMesActual) this.volverAMesActual();
+      });
+    },
+
+    consultarMesSeleccionado() {
+      const valor = document.getElementById('input-mes-historial').value; // "AAAA-MM"
+      if (!valor) return;
+      const [anio, mes] = valor.split('-').map(Number);
+
+      DashboardUI.mostrarCargandoResumen(true);
+      DashboardAPI.consultarResumenDeMes(mes, anio, (resumen) => {
+        this.viendoMesActual = (mes === this.mesActual && anio === this.anioActual);
+        DashboardUI.mostrarCargandoResumen(false);
+        DashboardUI.actualizarEtiquetaPeriodo(mes, anio, this.viendoMesActual);
+        DashboardUI.renderizarDetalle(resumen);
+        DashboardUI.alternarSelectorDeMes(false);
+      }, (error) => {
+        DashboardUI.mostrarCargandoResumen(false);
+        Utilidades.mostrarError('No se pudo consultar ese mes: ' + error.message);
+      });
+    },
+
+    volverAMesActual() {
+      this.viendoMesActual = true;
+      document.getElementById('input-mes-historial').value = `${this.anioActual}-${String(this.mesActual).padStart(2, '0')}`;
+      DashboardUI.actualizarEtiquetaPeriodo(this.mesActual, this.anioActual, true);
+      DashboardUI.renderizarDetalle(Store.dashboard);
+      DashboardUI.alternarSelectorDeMes(false);
+    }
+  };
+
+  function toggleVisibilidad(){
+    const balance = document.getElementById('ui-balance');
+    const saldo = document.getElementById('ui-saldo-disponible');
+    const icono = document.getElementById('icono-visibilidad');
+
+    balance.classList.toggle('modo-privado');
+    saldo.classList.toggle('modo-privado');
+
+    if (icono.classList.contains('fa-eye-slash')) {
+      icono.classList.remove('fa-eye-slash');
+      icono.classList.add('fa-eye');
+    } else {
+      icono.classList.remove('fa-eye');
+      icono.classList.add('fa-eye-slash');
+    }
+  }
+
+</script>

@@ -1,0 +1,170 @@
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --color-primario: #4F46E5;
+    --color-primario-oscuro: #3730A3;
+    --color-exito: #10B981;
+    --color-peligro: #F43F5E;
+    --color-texto: #1E293B;
+    --color-texto-suave: #64748B;
+    --fondo-app: #F5F6FB;
+    --radio-tarjeta: 20px;
+    --altura-nav: 68px;
+  }
+
+  * { font-family: 'Plus Jakarta Sans', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+
+  body {
+    background-color: var(--fondo-app);
+    color: var(--color-texto);
+    padding-bottom: calc(var(--altura-nav) + 20px);
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  h1, h2, h3, h4, h5, h6 { letter-spacing: -0.01em; }
+
+  .titulo-seccion {
+    color: var(--color-texto-suave);
+    font-weight: 700;
+    font-size: .78rem;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+  }
+
+  /* ---------- Pantallas (SPA por visibilidad, no por navegación real) ---------- */
+  .pantalla-app { animation: aparecer .25s ease; }
+  @keyframes aparecer {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .card { border-radius: var(--radio-tarjeta); border: none; }
+
+  /* ---------- Pantalla Inicio ---------- */
+  .saludo-usuario { font-size: 1.15rem; font-weight: 700; color: var(--color-texto); }
+
+  .tarjeta-balance {
+    border-radius: 28px;
+    background: linear-gradient(135deg, var(--color-primario) 0%, var(--color-primario-oscuro) 100%);
+    box-shadow: 0 12px 24px -8px rgba(79, 70, 229, .45);
+  }
+  .cifra-balance {
+    font-size: 2.2rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+  }
+
+  .fila-resumen {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 0;
+    border-bottom: 1px solid #EEF0F5;
+  }
+  .fila-resumen:last-child { border-bottom: none; }
+
+  /* ---------- Navegación inferior persistente ---------- */
+  .navbar-inferior {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    height: var(--altura-nav);
+    background: #fff;
+    display: flex;
+    align-items: stretch;
+    justify-content: space-around;
+    box-shadow: 0 -4px 16px rgba(30, 41, 59, .08);
+    z-index: 1030;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .nav-item {
+    background: none;
+    border: none;
+    color: #A0AEC0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    font-size: .68rem;
+    font-weight: 600;
+    flex: 1;
+    transition: color .15s ease;
+  }
+  .nav-item i { font-size: 1.2rem; }
+  .nav-item.activo { color: var(--color-primario); }
+
+  /* ---------- Botón flotante (esquina inferior derecha, según documento maestro) ---------- */
+  .btn-fab {
+    position: fixed;
+    bottom: calc(var(--altura-nav) + 16px);
+    right: 20px;
+    width: 58px;
+    height: 58px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    background: var(--color-primario);
+    border: none;
+    color: #fff;
+    box-shadow: 0 10px 20px -6px rgba(79, 70, 229, .55);
+    z-index: 1035;
+    transition: transform .15s ease;
+  }
+  .btn-fab:active { transform: scale(.93); }
+
+  /* ---------- Popup Modals (Bootstrap) ---------- */
+  .modal-content { border-radius: 22px; border: none; }
+  .modal-dialog-scrollable .modal-body { padding-bottom: 8px; }
+  .modal-header, .modal-footer { border-color: #EEF0F5; }
+
+  .campo-label { color: var(--color-texto-suave); font-size: .8rem; font-weight: 600; }
+
+  .separador-tarjeta { height: 1px; background: rgba(255, 255, 255, .25); }
+  .cifra-saldo-disponible { font-size: 1.5rem; font-weight: 700; }
+
+  .btn-eleccion {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px;
+    border-radius: 16px;
+    font-weight: 600;
+    text-align: left;
+    border: 1.5px solid transparent;
+  }
+  .btn-eleccion i { font-size: 1.2rem; }
+  .btn-eleccion-gasto { background: #FEF2F4; color: var(--color-peligro); }
+  .btn-eleccion-ingreso { background: #ECFDF5; color: var(--color-exito); }
+
+  /* ---------- Historial de movimientos ---------- */
+  #lista-movimientos .list-group-item {
+    border: none;
+    border-bottom: 1px solid #EEF0F5;
+    padding: 14px 4px;
+  }
+  #lista-movimientos .list-group-item:first-child { border-radius: var(--radio-tarjeta) var(--radio-tarjeta) 0 0; }
+  #lista-movimientos .list-group-item:last-child { border-bottom: none; border-radius: 0 0 var(--radio-tarjeta) var(--radio-tarjeta); }
+
+  /* ---------- Banner de error global ---------- */
+  .banner-error {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 2000;
+    font-size: .85rem;
+    font-weight: 600;
+  }
+
+  /*------ Filtro de privacidad -------------- */
+  .modo-privado{
+    filter: blur(6px);
+    opacity: 0.8;
+    user-select: none;
+    pointer-events: none;
+    transition: filter 0.3s ease, opacity 0.3s ease;
+  }
+</style>
