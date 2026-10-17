@@ -1,0 +1,52 @@
+<script>
+  /**
+   * DashboardUI.html
+   * Manipula el DOM de la pantalla Inicio y del Modal de resumen detallado
+   * (antes era un Offcanvas; ahora es un Modal, retroalimentación punto 3).
+   */
+  const NOMBRES_MES_ = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+  const DashboardUI = {
+    renderizarInicio() {
+      const nombre = Utilidades.obtenerCampo(Store.usuarioActual, 'Nombre', 'nombre') || 'de nuevo';
+      document.getElementById('saludo-nombre').textContent = nombre;
+
+      const d = Store.dashboard;
+      document.getElementById('ui-balance').textContent = Utilidades.formatearMoneda(d.balanceHistorico);
+      document.getElementById('ui-saldo-disponible').textContent = Utilidades.formatearMoneda(d.saldoDisponibleHistorico);
+    },
+
+    renderizarDetalle(d) {
+      document.getElementById('detalle-balance').textContent = Utilidades.formatearMoneda(d.balance);
+      document.getElementById('detalle-saldo-disponible').textContent = Utilidades.formatearMoneda(d.saldoDisponible);
+      document.getElementById('detalle-ingresos').textContent = Utilidades.formatearMoneda(d.ingresos);
+      document.getElementById('detalle-gastos-propios').textContent = Utilidades.formatearMoneda(d.gastosPropios);
+
+      const bloqueCompartidos = document.getElementById('bloque-compartidos');
+      if (d.esMultiUsuario) {
+        bloqueCompartidos.classList.remove('d-none');
+        document.getElementById('detalle-gastos-compartidos').textContent = Utilidades.formatearMoneda(d.gastosCompartidos);
+        document.getElementById('detalle-aporte-esperado').textContent = Utilidades.formatearMoneda(d.aporteEsperado);
+        document.getElementById('detalle-aporte-realizado').textContent = Utilidades.formatearMoneda(d.aporteRealizado);
+        document.getElementById('detalle-saldo-pendiente-aportar').textContent = Utilidades.formatearMoneda(d.saldoPendienteAportar);
+        document.getElementById('detalle-saldo-pendiente-recibir').textContent = Utilidades.formatearMoneda(d.saldoPendienteRecibir);
+      } else {
+        bloqueCompartidos.classList.add('d-none');
+      }
+    },
+
+    alternarSelectorDeMes(mostrar) {
+      document.getElementById('selector-mes').classList.toggle('d-none', !mostrar);
+    },
+
+    mostrarCargandoResumen(mostrar) {
+      document.getElementById('resumen-cargando').classList.toggle('d-none', !mostrar);
+      document.getElementById('resumen-contenido').classList.toggle('d-none', mostrar);
+    },
+
+    actualizarEtiquetaPeriodo(mes, anio, esMesActual) {
+      const etiqueta = document.getElementById('resumen-periodo-actual');
+      etiqueta.textContent = esMesActual ? 'Mes actual' : `${NOMBRES_MES_[mes - 1]} de ${anio}`;
+    }
+  };
+</script>

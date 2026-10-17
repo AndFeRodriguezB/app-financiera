@@ -1,0 +1,66 @@
+<script>
+  /**
+   * NavegacionUI.html
+   * "Router" del shell: cambia de pantalla y avisa a cada módulo la primera
+   * vez que se visita. El selector que abre el FAB ahora es un
+   * bootstrap.Modal (antes era un Offcanvas, retroalimentación punto 3).
+   */
+  const NavegacionUI = {
+    pantallas: ['inicio', 'movimientos', 'analisis', 'configuracion'],
+
+    init() {
+      document.querySelectorAll('.nav-item').forEach(boton => {
+        boton.addEventListener('click', () => this.mostrarPantalla(boton.dataset.pantalla));
+      });
+
+      document.getElementById('btn-fab').addEventListener('click', () => {
+        new bootstrap.Modal(document.getElementById('modalElegirTipo')).show();
+      });
+
+      document.getElementById('btn-nuevo-gasto').addEventListener('click', () => {
+        this._cambiarDeModal('modalElegirTipo', () => MovimientosUI.abrirFormularioGasto());
+      });
+
+      document.getElementById('btn-nuevo-ingreso').addEventListener('click', () => {
+        this._cambiarDeModal('modalElegirTipo', () => MovimientosUI.abrirFormularioIngreso());
+      });
+
+      this.mostrarPantalla('inicio');
+    },
+
+    // Cierra un modal y, solo cuando terminó su animación de salida, abre
+    // el siguiente. Evita que dos modales se superpongan.
+    _cambiarDeModal(idActual, siguiente) {
+      const elementoActual = document.getElementById(idActual);
+      const instancia = bootstrap.Modal.getOrCreateInstance(elementoActual);
+      elementoActual.addEventListener('hidden.bs.modal', function manejador() {
+        elementoActual.removeEventListener('hidden.bs.modal', manejador);
+        siguiente();
+      });
+      instancia.hide();
+    },
+
+    mostrarPantalla(nombre) {
+      Store.meta.pantallaActual = nombre;
+
+      this.pantallas.forEach(p => {
+        const el = document.getElementById('pantalla-' + p);
+        if (el) el.classList.toggle('d-none', p !== nombre);
+      });
+
+      document.querySelectorAll('.nav-item').forEach(boton => {
+        boton.classList.toggle('activo', boton.dataset.pantalla === nombre);
+      });
+
+      if (nombre === 'movimientos' && !Store.meta.historialCargado) {
+        MovimientosService.cargarHistorialInicial();
+      }
+      if (nombre === 'analisis' && !Store.meta.analisisCargado) {
+        AnalisisUI.cargar();
+      }
+      if (nombre === 'configuracion') {
+        CuentasService.alMostrarConfiguracion();
+      }
+    }
+  };
+</script>

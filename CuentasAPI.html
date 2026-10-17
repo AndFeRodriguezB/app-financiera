@@ -1,0 +1,24 @@
+<script>
+  /**
+   * CuentasAPI.html
+   * Capa "API" del frontend para la administración de cuentas: el único lugar
+   * que sabe que existe google.script.run para estas operaciones. Todas las
+   * respuestas del servidor tienen la forma { cuentas, cuenta }: la lista
+   * completa y actualizada de las cuentas del usuario y la cuenta afectada.
+   * El cliente NUNCA envía el ID del propietario: lo decide el servidor.
+   */
+  const CuentasAPI = {
+    obtener(onSuccess, onError) {
+      google.script.run.withSuccessHandler(onSuccess).withFailureHandler(onError).obtenerCuentasDelUsuarioActual();
+    },
+    crear(datos, onSuccess, onError) {
+      google.script.run.withSuccessHandler(onSuccess).withFailureHandler(onError).crearCuenta(datos);
+    },
+    actualizar(idCuenta, datos, onSuccess, onError) {
+      google.script.run.withSuccessHandler(onSuccess).withFailureHandler(onError).actualizarCuenta(idCuenta, datos);
+    },
+    cambiarEstado(idCuenta, activa, onSuccess, onError) {
+      google.script.run.withSuccessHandler(onSuccess).withFailureHandler(onError).cambiarEstadoCuenta(idCuenta, activa);
+    }
+  };
+</script>

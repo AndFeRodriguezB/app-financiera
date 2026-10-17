@@ -1,0 +1,184 @@
+<script>
+  /**
+   * MovimientosUI.html
+   * Única responsabilidad: manipular el DOM del historial y de los dos
+   * formularios (gasto/ingreso). No decide reglas de negocio, no llama a
+   * Apps Script directamente.
+   *
+   * MIGRACIÓN A IDs: cada <option> usa el ID (entero) como `value` y el NOMBRE
+   * como texto visible. Nunca se muestran IDs a la persona. Los nombres se
+   * insertan con textContent (nunca como HTML).
+   */
+  const MovimientosUI = {
+    /** Llena un <select> con [{id, nombre}] y un primer ítem de ayuda no seleccionable. */
+    llenarSelect(idSelect, opciones, textoAyuda) {
+      const select = document.getElementById(idSelect);
+      select.innerHTML = `<option value="" selected disabled>${textoAyuda}</option>`;
+      opciones.forEach(o => {
+        const opcion = document.createElement('option');
+        opcion.value = String(o.id);
+        opcion.textContent = o.nombre;
+        select.appendChild(opcion);
+      });
+    },
+
+    llenarSelectPagadoPor(opciones) {
+      const select = document.getElementById('gasto-pagado-por');
+      select.innerHTML = '';
+      opciones.forEach(o => {
+        const opcion = document.createElement('option');
+        opcion.value = String(o.id);
+        opcion.textContent = o.nombre;
+        select.appendChild(opcion);
+      });
+    },
+
+    mostrarCamposMultiUsuario(esMulti) {
+      document.getElementById('gasto-div-compartido').classList.toggle('d-none', !esMulti);
+      document.getElementById('gasto-div-pagado-por').classList.toggle('d-none', !esMulti);
+    },
+
+    mostrarSubcategorias(opciones) {
+      const div = document.getElementById('gasto-div-subcategoria');
+      const select = document.getElementById('gasto-subcategoria');
+      select.innerHTML = '<option value="" selected disabled>Selecciona un detalle...</option>';
+      if (opciones.length > 0) {
+        opciones.forEach(o => {
+          const opcion = document.createElement('option');
+          opcion.value = String(o.id);
+          opcion.textContent = o.nombre;
+          select.appendChild(opcion);
+        });
+        div.classList.remove('d-none');
+        select.required = true;
+      } else {
+        div.classList.add('d-none');
+        select.required = false;
+      }
+    },
+
+    abrirFormularioGasto(movimiento) {
+      const form = document.getElementById('formulario-gasto');
+      form.reset();
+      document.getElementById('gasto-id-edicion').value = movimiento ? movimiento.id : '';
+      document.getElementById('btn-eliminar-gasto').classList.toggle('d-none', !movimiento);
+      document.getElementById('btn-guardar-gasto').textContent = movimiento ? 'Guardar cambios' : 'Guardar';
+
+      // Quién pagó: el del movimiento (edición) o el predeterminado (nuevo)
+      const idPagador = movimiento ? movimiento.idUsuarioPagador : MovimientosService.pagadorPorDefecto();
+      document.getElementById('gasto-pagado-por').value = idPagador === null ? '' : String(idPagador);
+
+      MovimientosService.refrescarCategorias('gasto', movimiento ? movimiento.idCategoria : null);
+      MovimientosService.filtrarCuentasPorPagador(idPagador, movimiento ? movimiento.idCuenta : null);
+
+      if (movimiento) {
+        document.getElementById('gasto-fecha').value = movimiento.fecha;
+        document.getElementById('gasto-valor').value = movimiento.valor;
+        document.getElementById('gasto-cuenta').value = String(movimiento.idCuenta);
+        document.getElementById('gasto-categoria').value = String(movimiento.idCategoria);
+        MovimientosService.filtrarSubcategorias(movimiento.idCategoria, movimiento.idSubcategoria);
+        document.getElementById('gasto-subcategoria').value = movimiento.idSubcategoria === null ? '' : String(movimiento.idSubcategoria);
+        document.getElementById('gasto-descripcion').value = movimiento.descripcion || '';
+        document.getElementById('gasto-es-compartido').checked = movimiento.tipoGasto === 'Compartido';
+      } else {
+        document.getElementById('gasto-fecha').value = Utilidades.fechaLocalISO();
+        document.getElementById('gasto-div-subcategoria').classList.add('d-none');
+      }
+
+      new bootstrap.Modal(document.getElementById('modalGasto')).show();
+    },
+
+    abrirFormularioIngreso(movimiento) {
+      const form = document.getElementById('formulario-ingreso');
+      form.reset();
+      document.getElementById('ingreso-id-edicion').value = movimiento ? movimiento.id : '';
+      document.getElementById('btn-eliminar-ingreso').classList.toggle('d-none', !movimiento);
+      document.getElementById('btn-guardar-ingreso').textContent = movimiento ? 'Guardar cambios' : 'Guardar';
+
+      // Un ingreso nuevo es de quien tiene la sesión; al editar conserva a su dueño original.
+      const idDueno = movimiento ? movimiento.idUsuarioPagador : Store.idUsuarioActual;
+      MovimientosService.refrescarCategorias('ingreso', movimiento ? movimiento.idCategoria : null);
+      MovimientosService.refrescarCuentasIngreso(idDueno, movimiento ? movimiento.idCuenta : null);
+
+      if (movimiento) {
+        document.getElementById('ingreso-fecha').value = movimiento.fecha;
+        document.getElementById('ingreso-valor').value = movimiento.valor;
+        document.getElementById('ingreso-categoria').value = String(movimiento.idCategoria);
+        document.getElementById('ingreso-descripcion').value = movimiento.descripcion || '';
+        document.getElementById('ingreso-cuenta').value = String(movimiento.idCuenta);
+      } else {
+        document.getElementById('ingreso-fecha').value = Utilidades.fechaLocalISO();
+      }
+
+      new bootstrap.Modal(document.getElementById('modalIngreso')).show();
+    },
+
+    cerrarFormulario(prefijo) {
+      const el = document.getElementById(prefijo === 'gasto' ? 'modalGasto' : 'modalIngreso');
+      const instancia = bootstrap.Modal.getInstance(el);
+      if (instancia) instancia.hide();
+    },
+
+    bloquearBoton(idBoton, bloqueado) {
+      const boton = document.getElementById(idBoton);
+      if (!boton) return;
+      boton.disabled = bloqueado;
+      if (bloqueado) {
+        boton.dataset.textoOriginal = boton.innerHTML;
+        boton.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+      } else if (boton.dataset.textoOriginal) {
+        boton.innerHTML = boton.dataset.textoOriginal;
+      }
+    },
+
+    mostrarCargandoHistorial() {
+      document.getElementById('lista-movimientos').innerHTML = `
+        <div class="list-group-item text-center text-muted py-4">
+          <div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
+          Cargando movimientos...
+        </div>`;
+    },
+
+    renderizarLista(movimientos, agregar) {
+      const contenedor = document.getElementById('lista-movimientos');
+      if (!agregar) contenedor.innerHTML = '';
+
+      if (movimientos.length === 0 && !agregar) {
+        contenedor.innerHTML = '<div class="list-group-item text-center text-muted py-4">Aún no tienes movimientos registrados. Usa el botón "+" para crear el primero.</div>';
+        return;
+      }
+
+      movimientos.forEach(mov => {
+        const esIngreso = mov.esIngreso === true;
+
+        // Se arma con textContent: los nombres vienen de la hoja y nunca deben interpretarse como HTML.
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'list-group-item list-group-item-action d-flex justify-content-between align-items-center';
+
+        const izquierda = document.createElement('div');
+        const titulo = document.createElement('div');
+        titulo.className = 'fw-semibold';
+        titulo.textContent = (mov.nombreCategoria || 'Sin categoría') + (mov.nombreSubcategoria ? ' · ' + mov.nombreSubcategoria : '');
+        const detalle = document.createElement('div');
+        detalle.className = 'small text-muted';
+        detalle.textContent = mov.fecha + (mov.descripcion ? ' · ' + mov.descripcion : '');
+        izquierda.appendChild(titulo);
+        izquierda.appendChild(detalle);
+
+        const valor = document.createElement('strong');
+        valor.className = esIngreso ? 'text-success' : 'text-danger';
+        valor.textContent = (esIngreso ? '+' : '-') + Utilidades.formatearMoneda(mov.valor);
+
+        item.appendChild(izquierda);
+        item.appendChild(valor);
+        item.addEventListener('click', () => MovimientosService.editarMovimiento(mov.id));
+        contenedor.appendChild(item);
+      });
+    },
+
+    actualizarBotonVerMas() {
+      document.getElementById('btn-ver-mas').classList.toggle('d-none', !Store.meta.historialHayMas);
+    }
+  };
+</script>

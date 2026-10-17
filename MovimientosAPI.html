@@ -1,0 +1,21 @@
+<script>
+  /**
+   * MovimientosAPI.html
+   * Capa "API" del frontend para el módulo Movimientos: el único lugar que
+   * sabe que existe google.script.run para estas operaciones.
+   */
+  const MovimientosAPI = {
+    registrar(datos, onSuccess, onError) {
+      google.script.run.withSuccessHandler(onSuccess).withFailureHandler(onError).registrarMovimiento(datos);
+    },
+    actualizar(id, datos, onSuccess, onError) {
+      google.script.run.withSuccessHandler(onSuccess).withFailureHandler(onError).actualizarMovimiento(id, datos);
+    },
+    eliminar(id, onSuccess, onError) {
+      google.script.run.withSuccessHandler(onSuccess).withFailureHandler(onError).eliminarMovimiento(id);
+    },
+    obtenerHistorial(desde, cantidad, onSuccess, onError) {
+      google.script.run.withSuccessHandler(onSuccess).withFailureHandler(onError).obtenerHistorialMovimientos(desde, cantidad);
+    }
+  };
+</script>

@@ -1,0 +1,47 @@
+<div id="banner-error" class="banner-error alert alert-danger text-center mb-0 rounded-0 d-none"></div>
+
+<nav class="navbar-inferior">
+  <button class="nav-item" data-pantalla="inicio">
+    <i class="fas fa-house"></i>
+    <span>Inicio</span>
+  </button>
+  <button class="nav-item" data-pantalla="movimientos">
+    <i class="fas fa-list-ul"></i>
+    <span>Movimientos</span>
+  </button>
+  <button class="nav-item" data-pantalla="analisis">
+    <i class="fas fa-chart-pie"></i>
+    <span>Análisis</span>
+  </button>
+  <button class="nav-item" data-pantalla="configuracion">
+    <i class="fas fa-gear"></i>
+    <span>Config.</span>
+  </button>
+</nav>
+
+<button class="btn btn-primary btn-fab" id="btn-fab" aria-label="Registrar movimiento" type="button">
+  <i class="fas fa-plus"></i>
+</button>
+
+<!-- Popup Modal: elegir Gasto/Ingreso (antes era un Offcanvas) -->
+<div class="modal fade" id="modalElegirTipo" tabindex="-1" aria-labelledby="modalElegirTipoLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="modalElegirTipoLabel">Registrar movimiento</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body d-grid gap-2">
+        <button class="btn btn-eleccion btn-eleccion-gasto" id="btn-nuevo-gasto" type="button">
+          <i class="fas fa-arrow-trend-down"></i>
+          <span>Nuevo gasto</span>
+        </button>
+        <button class="btn btn-eleccion btn-eleccion-ingreso" id="btn-nuevo-ingreso" type="button">
+          <i class="fas fa-arrow-trend-up"></i>
+          <span>Nuevo ingreso</span>
+        </button>
+        <button class="btn btn-light btn-lg mt-2" data-bs-dismiss="modal" type="button">Cancelar</button>
+      </div>
+    </div>
+  </div>
+</div>

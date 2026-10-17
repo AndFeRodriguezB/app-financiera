@@ -1,0 +1,137 @@
+<script>
+  /**
+   * CuentasUI.html
+   * Única responsabilidad: manipular el DOM de Configuración > Mis cuentas y de
+   * su formulario. No decide reglas de negocio ni llama a Apps Script. Los
+   * nombres se insertan con textContent (nunca como HTML) y no se muestran IDs.
+   */
+  const CuentasUI = {
+    TIPOS: [['Debito', 'Débito'], ['Credito', 'Crédito']],
+
+    llenarTipos() {
+      const select = document.getElementById('cuenta-tipo');
+      select.innerHTML = '<option value="" selected disabled>Selecciona el tipo...</option>';
+      this.TIPOS.forEach(([valor, texto]) => {
+        const opcion = document.createElement('option');
+        opcion.value = valor;
+        opcion.textContent = texto;
+        select.appendChild(opcion);
+      });
+    },
+
+    // Cupo, día de corte y día de pago solo aplican a las cuentas de crédito.
+    mostrarCamposCredito(mostrar) {
+      document.getElementById('cuenta-div-credito').classList.toggle('d-none', !mostrar);
+    },
+
+    mostrarCargando() {
+      document.getElementById('lista-cuentas').innerHTML = `
+        <div class="text-center text-muted py-4">
+          <div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
+          Cargando tus cuentas...
+        </div>`;
+    },
+
+    mostrarErrorDeCarga() {
+      document.getElementById('lista-cuentas').innerHTML =
+        '<div class="text-center text-muted py-4">No se pudieron cargar tus cuentas. Vuelve a abrir esta sección para reintentar.</div>';
+      Store.meta.cuentasCargadas = false;
+    },
+
+    renderizarLista(cuentas) {
+      const contenedor = document.getElementById('lista-cuentas');
+      contenedor.innerHTML = '';
+
+      const hayActivas = cuentas.some(c => c.activa);
+      document.getElementById('cuentas-aviso').classList.toggle('d-none', hayActivas);
+
+      if (cuentas.length === 0) {
+        contenedor.innerHTML = '<div class="text-center text-muted py-4">Aún no tienes cuentas. Crea una para poder registrar tus gastos e ingresos.</div>';
+        return;
+      }
+      cuentas.forEach(c => contenedor.appendChild(this._crearTarjeta(c)));
+    },
+
+    _crearTarjeta(c) {
+      const tarjeta = document.createElement('div');
+      tarjeta.className = 'card shadow-sm' + (c.activa ? '' : ' opacity-75');
+
+      const cuerpo = document.createElement('div');
+      cuerpo.className = 'card-body d-flex justify-content-between align-items-start gap-2';
+
+      const info = document.createElement('div');
+      const titulo = document.createElement('div');
+      titulo.className = 'fw-semibold';
+      const nombre = document.createElement('span');
+      nombre.textContent = c.nombre;
+      const tipo = document.createElement('span');
+      tipo.className = 'badge text-bg-light ms-2';
+      tipo.textContent = c.tipo === 'Credito' ? 'Crédito' : 'Débito';
+      titulo.appendChild(nombre);
+      titulo.appendChild(tipo);
+      info.appendChild(titulo);
+
+      if (c.tipo === 'Credito') {
+        const credito = document.createElement('div');
+        credito.className = 'small text-muted';
+        const dia = d => (d === null || d === undefined) ? '—' : 'día ' + d;
+        credito.textContent = `Cupo: ${c.cupoTotal === null || c.cupoTotal === undefined ? '—' : Utilidades.formatearMoneda(c.cupoTotal)} · Corte: ${dia(c.diaCorte)} · Pago: ${dia(c.diaPago)}`;
+        info.appendChild(credito);
+      }
+
+      const estado = document.createElement('div');
+      estado.className = 'small ' + (c.activa ? 'text-success' : 'text-muted');
+      const n = c.cantidadMovimientos || 0;
+      estado.textContent = `${c.activa ? 'Activa' : 'Inactiva'} · ${n} movimiento${n === 1 ? '' : 's'}`;
+      info.appendChild(estado);
+
+      const acciones = document.createElement('div');
+      acciones.className = 'd-flex gap-1 flex-shrink-0';
+
+      const editar = document.createElement('button');
+      editar.type = 'button';
+      editar.className = 'btn btn-sm btn-outline-secondary';
+      editar.title = 'Editar';
+      editar.textContent = 'Editar';
+      editar.addEventListener('click', () => CuentasService.editarCuenta(c.idCuenta));
+
+      const alternar = document.createElement('button');
+      alternar.type = 'button';
+      alternar.className = 'btn btn-sm ' + (c.activa ? 'btn-outline-danger' : 'btn-outline-success');
+      alternar.textContent = c.activa ? 'Desactivar' : 'Reactivar';
+      alternar.addEventListener('click', () => CuentasService.cambiarEstado(c.idCuenta, !c.activa));
+
+      acciones.appendChild(editar);
+      acciones.appendChild(alternar);
+      cuerpo.appendChild(info);
+      cuerpo.appendChild(acciones);
+      tarjeta.appendChild(cuerpo);
+      return tarjeta;
+    },
+
+    abrirFormulario(cuenta) {
+      document.getElementById('formulario-cuenta').reset();
+      document.getElementById('cuenta-id-edicion').value = cuenta ? cuenta.idCuenta : '';
+      document.getElementById('modalCuentaLabel').textContent = cuenta ? 'Editar cuenta' : 'Nueva cuenta';
+      document.getElementById('btn-guardar-cuenta').textContent = cuenta ? 'Guardar cambios' : 'Guardar';
+
+      if (cuenta) {
+        document.getElementById('cuenta-nombre').value = cuenta.nombre;
+        document.getElementById('cuenta-tipo').value = cuenta.tipo;
+        const esCredito = cuenta.tipo === 'Credito';
+        document.getElementById('cuenta-cupo').value = esCredito && cuenta.cupoTotal ? new Intl.NumberFormat('es-CO').format(cuenta.cupoTotal) : '';
+        document.getElementById('cuenta-dia-corte').value = esCredito && cuenta.diaCorte ? cuenta.diaCorte : '';
+        document.getElementById('cuenta-dia-pago').value = esCredito && cuenta.diaPago ? cuenta.diaPago : '';
+        this.mostrarCamposCredito(esCredito);
+      } else {
+        this.mostrarCamposCredito(false);
+      }
+      new bootstrap.Modal(document.getElementById('modalCuenta')).show();
+    },
+
+    cerrarFormulario() {
+      const instancia = bootstrap.Modal.getInstance(document.getElementById('modalCuenta'));
+      if (instancia) instancia.hide();
+    }
+  };
+</script>

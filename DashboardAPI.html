@@ -1,0 +1,30 @@
+<script>
+  /**
+   * DashboardAPI.html
+   * Capa "API" del frontend: el único lugar del módulo Dashboard que sabe
+   * que existe google.script.run. Ni Service ni UI llaman a google.script.run
+   * directamente.
+   */
+  const DashboardAPI = {
+    cargarInicio(onSuccess, onError) {
+      google.script.run
+        .withSuccessHandler(onSuccess)
+        .withFailureHandler(onError)
+        .obtenerDatosIniciales();
+    },
+
+    refrescarResumen(onSuccess, onError) {
+      google.script.run
+        .withSuccessHandler(onSuccess)
+        .withFailureHandler(onError)
+        .obtenerResumenFinanciero();
+    },
+
+    consultarResumenDeMes(mes, anio, onSuccess, onError) {
+      google.script.run
+        .withSuccessHandler(onSuccess)
+        .withFailureHandler(onError)
+        .obtenerResumenFinancieroPorMes(mes, anio);
+    }
+  };
+</script>

@@ -1,0 +1,126 @@
+<script>
+  /**
+   * CuentasService.html
+   * Lógica de negocio de Configuración > Mis cuentas: carga la lista, abre el
+   * formulario de creación/edición, valida por comodidad (el servidor vuelve a
+   * validar TODO), y mantiene Store.catalogos.cuentas sincronizado para que los
+   * selectores de Movimientos reflejen de inmediato las cuentas nuevas,
+   * renombradas, desactivadas o reactivadas.
+   *
+   * Las cuentas no se eliminan: se desactivan. Una cuenta inactiva deja de
+   * ofrecerse en movimientos NUEVOS, pero el historial sigue mostrándola.
+   */
+  const CuentasService = {
+    // Se llama una sola vez al arrancar (App.html): los elementos de Configuración ya existen en el DOM.
+    configurar() {
+      CuentasUI.llenarTipos();
+      document.getElementById('btn-nueva-cuenta').addEventListener('click', () => this.nuevaCuenta());
+      document.getElementById('btn-guardar-cuenta').addEventListener('click', () => this.guardar());
+      document.getElementById('cuenta-tipo').addEventListener('change', e => CuentasUI.mostrarCamposCredito(e.target.value === 'Credito'));
+    },
+
+    // Primera visita a Configuración: carga la lista (con la cantidad de movimientos de cada cuenta).
+    alMostrarConfiguracion() {
+      if (!Store.meta.cuentasCargadas) this.recargar();
+    },
+
+    recargar() {
+      CuentasUI.mostrarCargando();
+      CuentasAPI.obtener(
+        (respuesta) => this.procesarRespuesta(respuesta),
+        (error) => {
+          CuentasUI.mostrarErrorDeCarga();
+          Utilidades.mostrarError('No se pudieron cargar tus cuentas: ' + error.message);
+        }
+      );
+    },
+
+    procesarRespuesta(respuesta) {
+      const propias = (respuesta && respuesta.cuentas) || [];
+      Store.cuentasUsuario = propias;
+      this._sincronizarCatalogo(propias);
+      Store.meta.cuentasCargadas = true;
+      CuentasUI.renderizarLista(propias);
+    },
+
+    // Reemplaza en el catálogo global SOLO las cuentas del usuario actual (las de los demás no cambian).
+    _sincronizarCatalogo(propias) {
+      const idActual = Store.idUsuarioActual;
+      const ajenas = Store.catalogos.cuentas.filter(c => c.idUsuario !== idActual);
+      Store.catalogos.cuentas = ajenas.concat(propias);
+    },
+
+    nuevaCuenta() {
+      CuentasUI.abrirFormulario(null);
+    },
+
+    editarCuenta(idCuenta) {
+      const cuenta = Store.cuentasUsuario.find(c => c.idCuenta === idCuenta);
+      if (cuenta) CuentasUI.abrirFormulario(cuenta);
+    },
+
+    /** Lee el formulario. El ID y el propietario NO forman parte de lo que se envía. */
+    leerFormulario() {
+      const tipo = document.getElementById('cuenta-tipo').value;
+      const numeroODefecto = (id) => {
+        const texto = document.getElementById(id).value;
+        return texto === '' ? null : Number(texto.replace(/\./g, ''));
+      };
+      return {
+        nombre: document.getElementById('cuenta-nombre').value.trim(),
+        tipo,
+        cupoTotal: tipo === 'Credito' ? numeroODefecto('cuenta-cupo') : null,
+        diaCorte: tipo === 'Credito' ? numeroODefecto('cuenta-dia-corte') : null,
+        diaPago: tipo === 'Credito' ? numeroODefecto('cuenta-dia-pago') : null
+      };
+    },
+
+    _errorDeFormulario(datos) {
+      if (!datos.nombre) return 'Escribe un nombre para la cuenta.';
+      if (!datos.tipo) return 'Selecciona el tipo de cuenta (Débito o Crédito).';
+      if (datos.tipo === 'Credito') {
+        if (!datos.cupoTotal || datos.cupoTotal <= 0) return 'Escribe el cupo total de la tarjeta de crédito.';
+        const diaValido = d => Number.isInteger(d) && d >= 1 && d <= 31;
+        if (!diaValido(datos.diaCorte)) return 'El día de corte debe estar entre 1 y 31.';
+        if (!diaValido(datos.diaPago)) return 'El día de pago debe estar entre 1 y 31.';
+      }
+      return null;
+    },
+
+    guardar() {
+      const idEdicion = document.getElementById('cuenta-id-edicion').value;
+      const datos = this.leerFormulario();
+      const error = this._errorDeFormulario(datos);
+      if (error) { Utilidades.mostrarError(error); return; }
+
+      MovimientosUI.bloquearBoton('btn-guardar-cuenta', true);
+      const alTerminar = (respuesta) => {
+        MovimientosUI.bloquearBoton('btn-guardar-cuenta', false);
+        CuentasUI.cerrarFormulario();
+        this.procesarRespuesta(respuesta);
+      };
+      const alFallar = (e) => {
+        MovimientosUI.bloquearBoton('btn-guardar-cuenta', false);
+        Utilidades.mostrarError('No se pudo guardar la cuenta: ' + e.message);
+      };
+
+      if (idEdicion) CuentasAPI.actualizar(Number(idEdicion), datos, alTerminar, alFallar);
+      else CuentasAPI.crear(datos, alTerminar, alFallar);
+    },
+
+    cambiarEstado(idCuenta, activa) {
+      const cuenta = Store.cuentasUsuario.find(c => c.idCuenta === idCuenta);
+      if (!cuenta) return;
+      if (!activa) {
+        const detalle = cuenta.cantidadMovimientos > 0
+          ? ` Sus ${cuenta.cantidadMovimientos} movimiento(s) se conservan tal cual.` : '';
+        if (!confirm(`¿Desactivar "${cuenta.nombre}"? Dejará de aparecer al registrar movimientos nuevos.${detalle} Podrás reactivarla cuando quieras.`)) return;
+      }
+      CuentasAPI.cambiarEstado(
+        idCuenta, activa,
+        (respuesta) => this.procesarRespuesta(respuesta),
+        (e) => Utilidades.mostrarError('No se pudo cambiar el estado de la cuenta: ' + e.message)
+      );
+    }
+  };
+</script>

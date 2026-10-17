@@ -1,0 +1,73 @@
+<section id="pantalla-configuracion" class="pantalla-app d-none">
+  <div class="container pt-4 pb-4">
+    <h6 class="titulo-seccion mb-3">Configuración</h6>
+
+    <!-- Mis cuentas: cada cuenta pertenece a un único usuario. No se eliminan: se desactivan. -->
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <h6 class="mb-0 fw-bold">Mis cuentas</h6>
+      <button type="button" class="btn btn-sm btn-primary" id="btn-nueva-cuenta"><i class="fas fa-plus me-1"></i>Nueva cuenta</button>
+    </div>
+    <p class="small text-muted mb-3">Aquí administras las cuentas desde las que pagas y a las que recibes dinero. Una cuenta desactivada deja de ofrecerse al registrar movimientos nuevos, pero sus movimientos anteriores se conservan.</p>
+
+    <div id="cuentas-aviso" class="alert alert-warning small d-none" role="alert">
+      No tienes cuentas activas: no podrás registrar gastos ni ingresos hasta que crees o reactives una.
+    </div>
+
+    <div id="lista-cuentas" class="vstack gap-2">
+      <div class="text-center text-muted py-4">
+        <div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
+        Cargando tus cuentas...
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Popup Modal: Crear / editar CUENTA. Nunca se pide el ID ni el propietario: los decide el servidor. -->
+<div class="modal fade" id="modalCuenta" tabindex="-1" aria-labelledby="modalCuentaLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="modalCuentaLabel">Nueva cuenta</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <form id="formulario-cuenta" autocomplete="off">
+          <input type="hidden" id="cuenta-id-edicion">
+
+          <div class="mb-3">
+            <label class="form-label campo-label">Nombre</label>
+            <input type="text" class="form-control" id="cuenta-nombre" maxlength="60" placeholder="Ej: Bancolombia" required>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label campo-label">Tipo</label>
+            <select class="form-select" id="cuenta-tipo" required>
+              <option value="" selected disabled>Selecciona el tipo...</option>
+            </select>
+          </div>
+
+          <!-- Solo para cuentas de crédito -->
+          <div id="cuenta-div-credito" class="d-none">
+            <div class="mb-3">
+              <label class="form-label campo-label">Cupo total ($)</label>
+              <input type="text" inputmode="numeric" class="form-control input-moneda" id="cuenta-cupo" placeholder="Ej: 3.000.000">
+            </div>
+            <div class="row mb-3">
+              <div class="col-6">
+                <label class="form-label campo-label">Día de corte</label>
+                <input type="number" inputmode="numeric" min="1" max="31" class="form-control" id="cuenta-dia-corte" placeholder="1-31">
+              </div>
+              <div class="col-6">
+                <label class="form-label campo-label">Día de pago</label>
+                <input type="number" inputmode="numeric" min="1" max="31" class="form-control" id="cuenta-dia-pago" placeholder="1-31">
+              </div>
+            </div>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-primary px-4 ms-auto" id="btn-guardar-cuenta">Guardar</button>
+      </div>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,303 @@
+<script>
+  /**
+   * MovimientosService.html
+   * Lógica de negocio del módulo Movimientos: arma los formularios inteligentes,
+   * valida, decide crear vs. editar, y mantiene el historial/dashboard
+   * sincronizados después de cada mutación.
+   *
+   * MIGRACIÓN A IDs: los selectores muestran NOMBRES pero su `value` es el ID
+   * (entero). Como el `value` de un elemento HTML siempre es texto, TODO se
+   * convierte con Utilidades.aId() antes de comparar o de enviar al servidor.
+   * Las funciones opciones*() devuelven datos puros ({id, nombre}); la UI solo
+   * los pinta. El backend vuelve a validar todo: esto es solo comodidad.
+   *
+   * Reglas de los selectores:
+   *  - Movimiento NUEVO: solo cuentas/categorías/subcategorías ACTIVAS.
+   *  - Cuentas de gasto: las activas del usuario que PAGÓ. Cuentas de ingreso: las
+   *    activas del dueño del ingreso (quien lo registra, o su dueño original al editar).
+   *  - EDITAR: si la cuenta/categoría/subcategoría actual quedó inactiva (o no es del
+   *    pagador por un dato histórico) se muestra igualmente, marcada "(inactiva)", para
+   *    no perder la referencia histórica al guardar.
+   */
+  const MovimientosService = {
+    /* ---------- Datos para los selectores (puros, sin DOM) ---------- */
+
+    _etiqueta(nombre, activa) {
+      return activa === false ? `${nombre} (inactiva)` : nombre;
+    },
+
+    opcionesUsuarios() {
+      return Store.catalogos.usuarios
+        .map(u => ({ id: Utilidades.aId(u.idUsuario), nombre: Utilidades.obtenerCampo(u, 'Nombre', 'nombre') }))
+        .filter(o => o.id !== null && o.nombre);
+    },
+
+    opcionesCategorias(esIngreso, idActual) {
+      return Store.catalogos.categorias
+        .filter(c => (c.tipo === 'Ingreso') === esIngreso && (c.activa || c.idCategoria === idActual))
+        .map(c => ({ id: c.idCategoria, nombre: this._etiqueta(c.categoria, c.activa) }));
+    },
+
+    opcionesSubcategorias(idCategoria, idActual) {
+      return Store.catalogos.subcategorias
+        .filter(s => s.idCategoria === idCategoria && (s.activa || s.idSubcategoria === idActual))
+        .map(s => ({ id: s.idSubcategoria, nombre: this._etiqueta(s.subcategoria, s.activa) }));
+    },
+
+    opcionesCuentas(idUsuarioDuenio, idActual) {
+      return Store.catalogos.cuentas
+        .filter(c => (c.idUsuario === idUsuarioDuenio && c.activa) || c.idCuenta === idActual)
+        .map(c => ({ id: c.idCuenta, nombre: this._etiqueta(c.nombre, c.activa) }));
+    },
+
+    /** Quién paga por defecto en un gasto nuevo: el único usuario, o quien tiene la sesión. */
+    pagadorPorDefecto() {
+      const usuarios = this.opcionesUsuarios();
+      if (!Store.shared.esMultiUsuario && usuarios.length === 1) return usuarios[0].id;
+      return Store.idUsuarioActual;
+    },
+
+    /* ---------- Refrescos de selectores ---------- */
+
+    refrescarCategorias(prefijo, idCategoriaActual) {
+      const esIngreso = prefijo === 'ingreso';
+      MovimientosUI.llenarSelect(prefijo + '-categoria', this.opcionesCategorias(esIngreso, idCategoriaActual || null), 'Selecciona una categoría...');
+    },
+
+    filtrarCuentasPorPagador(idUsuarioPagador, idCuentaActual) {
+      const dueno = Utilidades.aId(idUsuarioPagador);
+      MovimientosUI.llenarSelect('gasto-cuenta', dueno === null ? [] : this.opcionesCuentas(dueno, idCuentaActual || null), 'Selecciona una cuenta...');
+    },
+
+    refrescarCuentasIngreso(idUsuarioDuenio, idCuentaActual) {
+      const dueno = Utilidades.aId(idUsuarioDuenio);
+      MovimientosUI.llenarSelect('ingreso-cuenta', dueno === null ? [] : this.opcionesCuentas(dueno, idCuentaActual || null), 'Selecciona una cuenta...');
+    },
+
+    filtrarSubcategorias(idCategoria, idSubcategoriaActual) {
+      const id = Utilidades.aId(idCategoria);
+      MovimientosUI.mostrarSubcategorias(id === null ? [] : this.opcionesSubcategorias(id, idSubcategoriaActual || null));
+    },
+
+    /* ---------- Inicialización ---------- */
+
+    // Se llama UNA sola vez, después de la carga inicial (ver DashboardService).
+    // Los selectores de categorías y cuentas se vuelven a llenar cada vez que se
+    // abre un formulario (así reflejan siempre el catálogo vigente).
+    configurarFormularios() {
+      const esMulti = Store.shared.esMultiUsuario;
+
+      const hoyISO = Utilidades.fechaLocalISO();
+      document.getElementById('gasto-fecha').value = hoyISO;
+      document.getElementById('ingreso-fecha').value = hoyISO;
+
+      MovimientosUI.llenarSelectPagadoPor(this.opcionesUsuarios());
+      MovimientosUI.mostrarCamposMultiUsuario(esMulti);
+
+      document.getElementById('gasto-pagado-por').addEventListener('change', e => {
+        this.filtrarCuentasPorPagador(Utilidades.aId(e.target.value));
+      });
+
+      document.getElementById('gasto-categoria').addEventListener('change', e => {
+        this.filtrarSubcategorias(Utilidades.aId(e.target.value));
+      });
+
+      document.getElementById('btn-guardar-gasto').addEventListener('click', () => this.guardarGasto());
+      document.getElementById('btn-guardar-ingreso').addEventListener('click', () => this.guardarIngreso());
+      document.getElementById('btn-eliminar-gasto').addEventListener('click', () => this.confirmarEliminar('gasto'));
+      document.getElementById('btn-eliminar-ingreso').addEventListener('click', () => this.confirmarEliminar('ingreso'));
+      document.getElementById('btn-ver-mas').addEventListener('click', () => this.cargarMasHistorial());
+    },
+
+    /* ---------- Guardado ---------- */
+
+    validarCamposComunes(datos, etiqueta) {
+      if (!datos.fecha || !datos.valor || !datos.idCuenta || !datos.idCategoria) {
+        Utilidades.mostrarError(`Por favor llena todos los campos obligatorios del ${etiqueta}.`);
+        return false;
+      }
+      if (Number(datos.valor) <= 0) {
+        Utilidades.mostrarError('El valor debe ser mayor que cero.');
+        return false;
+      }
+      return true;
+    },
+
+    guardarGasto() {
+      const idEdicion = document.getElementById('gasto-id-edicion').value;
+      const esCompartido = document.getElementById('gasto-es-compartido').checked;
+      let valorVisualGasto = document.getElementById('gasto-valor').value;
+      let valorLimpioGasto = valorVisualGasto.replace(/\./g, '');
+      let valorNumericoGasto = parseFloat(valorLimpioGasto);
+
+      const datos = {
+        fecha: document.getElementById('gasto-fecha').value,
+        valor: valorNumericoGasto,
+        idCuenta: Utilidades.aId(document.getElementById('gasto-cuenta').value),
+        idCategoria: Utilidades.aId(document.getElementById('gasto-categoria').value),
+        idSubcategoria: Utilidades.aId(document.getElementById('gasto-subcategoria').value),
+        descripcion: document.getElementById('gasto-descripcion').value || '',
+        idUsuarioPagador: Utilidades.aId(document.getElementById('gasto-pagado-por').value),
+        tipoGasto: esCompartido ? 'Compartido' : 'Propio'
+      };
+
+      if (!this.validarCamposComunes(datos, 'gasto')) return;
+      if (!datos.idUsuarioPagador) {
+        Utilidades.mostrarError('Selecciona quién pagó el gasto.');
+        return;
+      }
+
+      MovimientosUI.bloquearBoton('btn-guardar-gasto', true);
+
+      const alTerminar = () => {
+        MovimientosUI.bloquearBoton('btn-guardar-gasto', false);
+        MovimientosUI.cerrarFormulario('gasto');
+        this.despuesDeGuardar();
+      };
+      const alFallar = (error) => {
+        MovimientosUI.bloquearBoton('btn-guardar-gasto', false);
+        Utilidades.mostrarError('No se pudo guardar el gasto: ' + error.message);
+      };
+
+      if (idEdicion) {
+        MovimientosAPI.actualizar(Number(idEdicion), datos, alTerminar, alFallar);
+      } else {
+        MovimientosAPI.registrar(datos, alTerminar, alFallar);
+      }
+    },
+
+    guardarIngreso() {
+      const idEdicion = document.getElementById('ingreso-id-edicion').value;
+      let valorVisual = document.getElementById('ingreso-valor').value;
+      let valorLimpio = valorVisual.replace(/\./g, '');
+      let valorNumerico = parseFloat(valorLimpio);
+
+      // El ingreso es siempre de quien lo registra: el backend fija usuario y pagador.
+      const datos = {
+        fecha: document.getElementById('ingreso-fecha').value,
+        valor: valorNumerico,
+        idCuenta: Utilidades.aId(document.getElementById('ingreso-cuenta').value),
+        idCategoria: Utilidades.aId(document.getElementById('ingreso-categoria').value),
+        descripcion: document.getElementById('ingreso-descripcion').value || '',
+        tipoGasto: 'Propio'
+      };
+
+      if (!this.validarCamposComunes(datos, 'ingreso')) return;
+
+      MovimientosUI.bloquearBoton('btn-guardar-ingreso', true);
+
+      const alTerminar = () => {
+        MovimientosUI.bloquearBoton('btn-guardar-ingreso', false);
+        MovimientosUI.cerrarFormulario('ingreso');
+        this.despuesDeGuardar();
+      };
+      const alFallar = (error) => {
+        MovimientosUI.bloquearBoton('btn-guardar-ingreso', false);
+        Utilidades.mostrarError('No se pudo guardar el ingreso: ' + error.message);
+      };
+
+      if (idEdicion) {
+        MovimientosAPI.actualizar(Number(idEdicion), datos, alTerminar, alFallar);
+      } else {
+        MovimientosAPI.registrar(datos, alTerminar, alFallar);
+      }
+    },
+
+    // Después de crear/editar/eliminar: refresca historial (primera página)
+    // y el resumen financiero. Si Análisis ya se había cargado, se marca
+    // para recalcularse la próxima vez que se visite.
+    despuesDeGuardar() {
+      Store.meta.historialOffset = 0;
+      Store.meta.historialHayMas = true;
+      this.cargarHistorialInicial();
+
+      DashboardAPI.refrescarResumen(
+        (resumen) => DashboardService.procesarResumenActualizado(resumen),
+        (error) => console.error('No se pudo refrescar el resumen:', error)
+      );
+
+      if (Store.meta.analisisCargado) {
+        Store.meta.analisisCargado = false;
+        if (Store.meta.pantallaActual === 'analisis') AnalisisUI.cargar();
+      }
+    },
+
+    cargarHistorialInicial() {
+      MovimientosUI.mostrarCargandoHistorial();
+      MovimientosAPI.obtenerHistorial(0, Store.meta.tamanoPagina, (resultado) => {
+        Store.movimientos = resultado.movimientos;
+        Store.meta.historialOffset = resultado.movimientos.length;
+        Store.meta.historialHayMas = resultado.hayMas;
+        Store.meta.historialCargado = true;
+        MovimientosUI.renderizarLista(Store.movimientos, false);
+        MovimientosUI.actualizarBotonVerMas();
+      }, (error) => Utilidades.mostrarError('No se pudo cargar el historial: ' + error.message));
+    },
+
+    cargarMasHistorial() {
+      MovimientosUI.bloquearBoton('btn-ver-mas', true);
+      MovimientosAPI.obtenerHistorial(Store.meta.historialOffset, Store.meta.tamanoPagina, (resultado) => {
+        Store.movimientos = Store.movimientos.concat(resultado.movimientos);
+        Store.meta.historialOffset += resultado.movimientos.length;
+        Store.meta.historialHayMas = resultado.hayMas;
+        MovimientosUI.renderizarLista(resultado.movimientos, true);
+        MovimientosUI.actualizarBotonVerMas();
+        MovimientosUI.bloquearBoton('btn-ver-mas', false);
+      }, (error) => {
+        Utilidades.mostrarError('No se pudo cargar más movimientos: ' + error.message);
+        MovimientosUI.bloquearBoton('btn-ver-mas', false);
+      });
+    },
+
+    editarMovimiento(id) {
+      const movimiento = Store.movimientos.find(m => m.id === id);
+      if (!movimiento) return;
+
+      // El servidor ya indica si es ingreso (según el Tipo de su categoría); si no, se calcula por ID.
+      const esIngreso = (typeof movimiento.esIngreso === 'boolean')
+        ? movimiento.esIngreso
+        : Utilidades.esCategoriaIngreso(Store.catalogos.categorias, movimiento.idCategoria);
+      if (esIngreso) {
+        MovimientosUI.abrirFormularioIngreso(movimiento);
+      } else {
+        MovimientosUI.abrirFormularioGasto(movimiento);
+      }
+    },
+
+    confirmarEliminar(prefijo) {
+      const idCampo = document.getElementById(prefijo + '-id-edicion').value;
+      if (!idCampo) return;
+      if (!confirm('¿Seguro que quieres eliminar este movimiento? Esta acción no se puede deshacer.')) return;
+
+      const id = Number(idCampo);
+      const idBoton = prefijo === 'gasto' ? 'btn-eliminar-gasto' : 'btn-eliminar-ingreso';
+      MovimientosUI.bloquearBoton(idBoton, true);
+
+      MovimientosAPI.eliminar(id, () => {
+        MovimientosUI.bloquearBoton(idBoton, false);
+        MovimientosUI.cerrarFormulario(prefijo);
+        this.despuesDeGuardar();
+      }, (error) => {
+        MovimientosUI.bloquearBoton(idBoton, false);
+        Utilidades.mostrarError('No se pudo eliminar: ' + error.message);
+      });
+    }
+  };
+
+  // Capturamos todos los campos con la clase 'input-moneda'
+  const inputsMoneda = document.querySelectorAll('.input-moneda')
+
+  // Recorre cada campo y aplica formato en tiempo real
+  inputsMoneda.forEach(function(input){
+    input.addEventListener('input', function(e) {
+      let valorLimpio = this.value.replace(/\D/g, '');
+
+      if (valorLimpio !== ''){
+        this.value = new Intl.NumberFormat('es-CO').format(valorLimpio);
+      } else {
+        this.value = '';
+      }
+    });
+  });
+  
+</script>
