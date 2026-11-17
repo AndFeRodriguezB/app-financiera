@@ -13,7 +13,26 @@
 
       const d = Store.dashboard;
       document.getElementById('ui-balance').textContent = Utilidades.formatearMoneda(d.balanceHistorico);
-      document.getElementById('ui-saldo-disponible').textContent = Utilidades.formatearMoneda(d.saldoDisponibleHistorico);
+
+      // "Saldo disponible" = suma de los saldos de tus cuentas de DÉBITO activas (nunca suma cupos ni deuda).
+      const saldo = document.getElementById('ui-saldo-disponible');
+      saldo.textContent = Utilidades.formatearMoneda(d.saldoDisponibleCuentas);
+      Utilidades.marcarNegativo(saldo, d.saldoDisponibleCuentas, true);
+
+      // Tarjetas de crédito: deuda y cupo disponible, siempre aparte del saldo.
+      const lineaTarjetas = document.getElementById('ui-linea-tarjetas');
+      const hayTarjetas = (d.cantidadTarjetasActivas || 0) > 0;
+      const hayDeclaradas = hayTarjetas && d.tarjetasSinDeclarar < d.cantidadTarjetasActivas;
+      lineaTarjetas.classList.toggle('d-none', !hayDeclaradas);
+      if (hayDeclaradas) {
+        document.getElementById('ui-deuda-tarjetas').textContent = Utilidades.formatearMoneda(d.deudaTarjetas);
+        const cupo = document.getElementById('ui-cupo-tarjetas');
+        cupo.textContent = Utilidades.formatearMoneda(d.cupoDisponibleTarjetas);
+        Utilidades.marcarNegativo(cupo, d.cupoDisponibleTarjetas, true);
+      }
+      const sinDeclarar = document.getElementById('ui-tarjetas-sin-declarar');
+      sinDeclarar.classList.toggle('d-none', !(d.tarjetasSinDeclarar > 0));
+      sinDeclarar.textContent = d.tarjetasSinDeclarar === 1 ? '1 tarjeta con deuda sin declarar' : `${d.tarjetasSinDeclarar} tarjetas con deuda sin declarar`;
     },
 
     renderizarDetalle(d) {

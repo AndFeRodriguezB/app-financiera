@@ -2,71 +2,134 @@
   <div class="container pt-4 pb-4">
     <h6 class="titulo-seccion mb-3">Configuración</h6>
 
-    <!-- Mis cuentas: cada cuenta pertenece a un único usuario. No se eliminan: se desactivan. -->
-    <div class="d-flex justify-content-between align-items-center mb-2">
-      <h6 class="mb-0 fw-bold">Mis cuentas</h6>
-      <button type="button" class="btn btn-sm btn-primary" id="btn-nueva-cuenta"><i class="fas fa-plus me-1"></i>Nueva cuenta</button>
-    </div>
-    <p class="small text-muted mb-3">Aquí administras las cuentas desde las que pagas y a las que recibes dinero. Una cuenta desactivada deja de ofrecerse al registrar movimientos nuevos, pero sus movimientos anteriores se conservan.</p>
-
-    <div id="cuentas-aviso" class="alert alert-warning small d-none" role="alert">
-      No tienes cuentas activas: no podrás registrar gastos ni ingresos hasta que crees o reactives una.
-    </div>
-
-    <div id="lista-cuentas" class="vstack gap-2">
-      <div class="text-center text-muted py-4">
-        <div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
-        Cargando tus cuentas...
-      </div>
+    <!-- Menú de secciones: el detalle de cada sección se abre en su propia ventana. -->
+    <div class="list-group shadow-sm">
+      <button type="button" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center py-3" id="btn-abrir-gestion-cuentas">
+        <span class="d-flex align-items-center">
+          <i class="fas fa-wallet me-3 text-primary"></i>
+          <span>
+            <span class="fw-semibold d-block">Gestión de cuentas</span>
+            <span class="small text-muted">Cuentas de débito y tarjetas de crédito: saldos, deuda y cupo</span>
+          </span>
+        </span>
+        <i class="fas fa-chevron-right text-muted"></i>
+      </button>
     </div>
   </div>
 </section>
 
-<!-- Popup Modal: Crear / editar CUENTA. Nunca se pide el ID ni el propietario: los decide el servidor. -->
-<div class="modal fade" id="modalCuenta" tabindex="-1" aria-labelledby="modalCuentaLabel" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+<!-- Ventana amplia (pantalla completa en móvil). Tiene dos vistas internas (lista y formulario) para no apilar modales.
+     Nunca se pide el ID ni el propietario de una cuenta: los decide el servidor. -->
+<div class="modal fade" id="modalGestionCuentas" tabindex="-1" aria-labelledby="modalGestionCuentasLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable modal-fullscreen-sm-down">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title" id="modalCuentaLabel">Nueva cuenta</h5>
+        <h5 class="modal-title" id="modalGestionCuentasLabel">Gestión de cuentas</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        <form id="formulario-cuenta" autocomplete="off">
-          <input type="hidden" id="cuenta-id-edicion">
 
-          <div class="mb-3">
-            <label class="form-label campo-label">Nombre</label>
-            <input type="text" class="form-control" id="cuenta-nombre" maxlength="60" placeholder="Ej: Bancolombia" required>
+        <!-- Vista 1: lista de cuentas -->
+        <div id="vista-cuentas-lista">
+          <div class="row g-2 text-center mb-3">
+            <div class="col-12 col-sm-4">
+              <div class="border rounded p-2 h-100">
+                <div class="small text-muted">Saldo disponible</div>
+                <div class="fw-bold" id="resumen-cuentas-saldo">···</div>
+              </div>
+            </div>
+            <div class="col-6 col-sm-4">
+              <div class="border rounded p-2 h-100">
+                <div class="small text-muted">Deuda en tarjetas</div>
+                <div class="fw-bold" id="resumen-cuentas-deuda">···</div>
+              </div>
+            </div>
+            <div class="col-6 col-sm-4">
+              <div class="border rounded p-2 h-100">
+                <div class="small text-muted">Cupo disponible</div>
+                <div class="fw-bold" id="resumen-cuentas-cupo">···</div>
+              </div>
+            </div>
+          </div>
+          <p class="small text-muted d-none" id="resumen-cuentas-sin-declarar"></p>
+
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="mb-0 fw-bold">Mis cuentas</h6>
+            <button type="button" class="btn btn-sm btn-primary" id="btn-nueva-cuenta"><i class="fas fa-plus me-1"></i>Nueva cuenta</button>
+          </div>
+          <p class="small text-muted mb-3">El saldo de cada cuenta de débito se calcula con sus movimientos. Una cuenta desactivada deja de ofrecerse al registrar movimientos nuevos y de contar en tu saldo disponible, pero sus movimientos anteriores se conservan.</p>
+
+          <div id="cuentas-aviso" class="alert alert-warning small d-none" role="alert">
+            No tienes cuentas activas: no podrás registrar gastos ni ingresos hasta que crees o reactives una.
           </div>
 
-          <div class="mb-3">
-            <label class="form-label campo-label">Tipo</label>
-            <select class="form-select" id="cuenta-tipo" required>
-              <option value="" selected disabled>Selecciona el tipo...</option>
-            </select>
+          <div id="lista-cuentas" class="vstack gap-2">
+            <div class="text-center text-muted py-4">
+              <div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
+              Cargando tus cuentas...
+            </div>
           </div>
+        </div>
 
-          <!-- Solo para cuentas de crédito -->
-          <div id="cuenta-div-credito" class="d-none">
+        <!-- Vista 2: crear / editar una cuenta -->
+        <div id="vista-cuentas-formulario" class="d-none">
+          <form id="formulario-cuenta" autocomplete="off">
+            <input type="hidden" id="cuenta-id-edicion">
+
             <div class="mb-3">
-              <label class="form-label campo-label">Cupo total ($)</label>
-              <input type="text" inputmode="numeric" class="form-control input-moneda" id="cuenta-cupo" placeholder="Ej: 3.000.000">
+              <label class="form-label campo-label">Nombre</label>
+              <input type="text" class="form-control" id="cuenta-nombre" maxlength="60" placeholder="Ej: Bancolombia" required>
             </div>
-            <div class="row mb-3">
-              <div class="col-6">
-                <label class="form-label campo-label">Día de corte</label>
-                <input type="number" inputmode="numeric" min="1" max="31" class="form-control" id="cuenta-dia-corte" placeholder="1-31">
+
+            <div class="mb-3">
+              <label class="form-label campo-label">Tipo</label>
+              <select class="form-select" id="cuenta-tipo" required>
+                <option value="" selected disabled>Selecciona el tipo...</option>
+              </select>
+              <div class="form-text d-none" id="cuenta-tipo-ayuda">El tipo no se puede cambiar si la cuenta ya tiene movimientos.</div>
+            </div>
+
+            <!-- Solo para tarjetas de crédito -->
+            <div id="cuenta-div-credito" class="d-none">
+              <div class="mb-3">
+                <label class="form-label campo-label">Cupo total ($)</label>
+                <input type="text" inputmode="numeric" class="form-control input-moneda" id="cuenta-cupo" placeholder="Ej: 3.000.000">
               </div>
-              <div class="col-6">
-                <label class="form-label campo-label">Día de pago</label>
-                <input type="number" inputmode="numeric" min="1" max="31" class="form-control" id="cuenta-dia-pago" placeholder="1-31">
+              <div class="row mb-3">
+                <div class="col-6">
+                  <label class="form-label campo-label">Día de corte</label>
+                  <input type="number" inputmode="numeric" min="1" max="31" class="form-control" id="cuenta-dia-corte" placeholder="1-31">
+                </div>
+                <div class="col-6">
+                  <label class="form-label campo-label">Día de pago</label>
+                  <input type="number" inputmode="numeric" min="1" max="31" class="form-control" id="cuenta-dia-pago" placeholder="1-31">
+                </div>
+              </div>
+
+              <div class="border rounded p-3 mb-3">
+                <div class="fw-semibold mb-1">Saldo adeudado</div>
+                <p class="small text-muted mb-2">Escribe lo que debes en esta tarjeta según tu estado de cuenta (puede ser 0) y la fecha a la que corresponde. A partir de esa fecha, solo los gastos que registres después se sumarán a la deuda; los anteriores ya están incluidos en este saldo.</p>
+                <div class="row">
+                  <div class="col-7">
+                    <label class="form-label campo-label">Saldo adeudado ($)</label>
+                    <input type="text" inputmode="numeric" class="form-control input-moneda" id="cuenta-saldo-adeudado" placeholder="Ej: 1.000.000">
+                  </div>
+                  <div class="col-5">
+                    <label class="form-label campo-label">Saldo al día</label>
+                    <input type="date" class="form-control" id="cuenta-fecha-saldo">
+                  </div>
+                </div>
+                <div class="small mt-2 text-muted" id="cuenta-deuda-actual-info"></div>
               </div>
             </div>
-          </div>
-        </form>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-primary px-4 ms-auto" id="btn-guardar-cuenta">Guardar</button>
+
+            <div class="d-flex gap-2 justify-content-end mt-4">
+              <button type="button" class="btn btn-outline-secondary px-4" id="btn-cancelar-cuenta">Cancelar</button>
+              <button type="button" class="btn btn-primary px-4" id="btn-guardar-cuenta">Guardar</button>
+            </div>
+          </form>
+        </div>
+
       </div>
     </div>
   </div>

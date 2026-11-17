@@ -7,6 +7,11 @@
  * Funciones públicas (únicas llamables desde el cliente vía google.script.run):
  * obtenerDatosIniciales, obtenerResumenFinanciero, obtenerResumenFinancieroPorMes
  *
+ * SALDOS POR CUENTA: además de las cifras de siempre (que NO cambiaron), el resumen incluye
+ * lo calculado desde las cuentas del usuario: saldoDisponibleCuentas (Σ de sus cuentas de DÉBITO
+ * activas), deudaTarjetas, cupoDisponibleTarjetas, cantidadTarjetasActivas y tarjetasSinDeclarar.
+ * Son cifras "de hoy" (no dependen del mes consultado).
+ *
  * MIGRACIÓN A IDs: la identidad interna del usuario es su ID_Usuario (entero).
  * El nombre solo se usa para mostrar (saludo, etiquetas). Los movimientos se
  * leen del repositorio (hoja Movimientos); ya no se lee LOGS.
@@ -23,9 +28,20 @@ function obtenerDatosIniciales() {
   return {
     usuarioActual,
     idUsuarioActual,
-    catalogos,
+    catalogos: catalogosParaCliente_(catalogos, idUsuarioActual),
     dashboard
   };
+}
+
+/**
+ * Los datos financieros de las cuentas de OTRAS personas (cupo, días, saldo declarado) no tienen
+ * por qué viajar al navegador: la interfaz solo necesita su id, nombre, tipo y estado para mostrar
+ * el historial. Las cuentas del usuario actual llegan completas.
+ */
+function catalogosParaCliente_(catalogos, idUsuarioActual) {
+  const ocultar = c => (c.idUsuario === idUsuarioActual) ? c
+    : Object.assign({}, c, { cupoTotal: null, diaCorte: null, diaPago: null, saldoInicial: null, fechaSaldoInicial: null });
+  return Object.assign({}, catalogos, { cuentas: catalogos.cuentas.map(ocultar) });
 }
 
 /**
@@ -50,5 +66,7 @@ function obtenerResumenFinancieroPorMes(mes, anio) {
 
 function calcularResumenParaPeriodo_(catalogos, idUsuarioActual, mes, anio) {
   const todosLosMovimientos = obtenerTodosLosMovimientos_();
-  return calcularResumenFinanciero_(todosLosMovimientos, catalogos.categorias, catalogos.usuarios, idUsuarioActual, mes, anio);
+  const resumen = calcularResumenFinanciero_(todosLosMovimientos, catalogos.categorias, catalogos.usuarios, idUsuarioActual, mes, anio);
+  const saldos = calcularSaldosCuentas_({ cuentas: catalogos.cuentas, movimientos: todosLosMovimientos, categorias: catalogos.categorias });
+  return Object.assign({}, resumen, resumenSaldosDeUsuario_(saldos, idUsuarioActual));
 }

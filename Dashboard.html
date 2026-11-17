@@ -14,7 +14,12 @@
         <div class="separador-tarjeta"></div>
 
         <p class="mb-1 opacity-75 text-uppercase small fw-semibold mt-3">Saldo disponible</p>
-        <h3 class="cifra-saldo-disponible mb-3 modo-privado" id="ui-saldo-disponible">···</h3>
+        <h3 class="cifra-saldo-disponible mb-1 modo-privado" id="ui-saldo-disponible">···</h3>
+        <p class="small opacity-75 mb-3 d-none" id="ui-linea-tarjetas">
+          Deuda en tarjetas: <span class="modo-privado" id="ui-deuda-tarjetas">···</span>
+          · Cupo disponible: <span class="modo-privado" id="ui-cupo-tarjetas">···</span>
+        </p>
+        <p class="small opacity-75 mb-3 d-none" id="ui-tarjetas-sin-declarar"></p>
 
         <button class="btn btn-light btn-sm px-4 fw-semibold" type="button" data-bs-toggle="modal" data-bs-target="#modalResumenDetalle">
           Ver detalle
@@ -62,7 +67,7 @@
             <strong id="detalle-balance">$0</strong>
           </div>
           <div class="fila-resumen">
-            <span>Saldo disponible</span>
+            <span>Saldo del mes</span>
             <strong id="detalle-saldo-disponible">$0</strong>
           </div>
           <div class="fila-resumen">

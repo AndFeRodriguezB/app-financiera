@@ -1,9 +1,10 @@
 <script>
   /**
    * CuentasUI.html
-   * Única responsabilidad: manipular el DOM de Configuración > Mis cuentas y de
-   * su formulario. No decide reglas de negocio ni llama a Apps Script. Los
-   * nombres se insertan con textContent (nunca como HTML) y no se muestran IDs.
+   * Única responsabilidad: manipular el DOM de Configuración > Gestión de cuentas (ventana con dos
+   * vistas internas: lista y formulario). No decide reglas de negocio ni llama a Apps Script.
+   * Los nombres se insertan con textContent (nunca como HTML) y no se muestran IDs.
+   * Importes negativos (saldo de débito, cupo disponible) se muestran SIEMPRE en rojo.
    */
   const CuentasUI = {
     TIPOS: [['Debito', 'Débito'], ['Credito', 'Crédito']],
@@ -19,7 +20,18 @@
       });
     },
 
-    // Cupo, día de corte y día de pago solo aplican a las cuentas de crédito.
+    abrirGestion() {
+      this.mostrarVista('lista');
+      new bootstrap.Modal(document.getElementById('modalGestionCuentas')).show();
+    },
+
+    mostrarVista(vista) {
+      document.getElementById('vista-cuentas-lista').classList.toggle('d-none', vista !== 'lista');
+      document.getElementById('vista-cuentas-formulario').classList.toggle('d-none', vista !== 'formulario');
+      if (vista === 'lista') document.getElementById('modalGestionCuentasLabel').textContent = 'Gestión de cuentas';
+    },
+
+    // Cupo, día de corte, día de pago y saldo adeudado solo aplican a las tarjetas de crédito.
     mostrarCamposCredito(mostrar) {
       document.getElementById('cuenta-div-credito').classList.toggle('d-none', !mostrar);
     },
@@ -34,16 +46,29 @@
 
     mostrarErrorDeCarga() {
       document.getElementById('lista-cuentas').innerHTML =
-        '<div class="text-center text-muted py-4">No se pudieron cargar tus cuentas. Vuelve a abrir esta sección para reintentar.</div>';
+        '<div class="text-center text-muted py-4">No se pudieron cargar tus cuentas. Cierra y vuelve a abrir esta ventana para reintentar.</div>';
       Store.meta.cuentasCargadas = false;
+    },
+
+    renderizarResumen(r) {
+      const saldo = document.getElementById('resumen-cuentas-saldo');
+      saldo.textContent = Utilidades.formatearMoneda(r.saldoDisponibleCuentas);
+      Utilidades.marcarNegativo(saldo, r.saldoDisponibleCuentas);
+      document.getElementById('resumen-cuentas-deuda').textContent = Utilidades.formatearMoneda(r.deudaTarjetas);
+      const cupo = document.getElementById('resumen-cuentas-cupo');
+      cupo.textContent = Utilidades.formatearMoneda(r.cupoDisponibleTarjetas);
+      Utilidades.marcarNegativo(cupo, r.cupoDisponibleTarjetas);
+      const nota = document.getElementById('resumen-cuentas-sin-declarar');
+      nota.classList.toggle('d-none', !(r.tarjetasSinDeclarar > 0));
+      nota.textContent = r.tarjetasSinDeclarar === 1
+        ? '1 tarjeta con deuda sin declarar: no entra en estos totales hasta que registres su saldo adeudado.'
+        : `${r.tarjetasSinDeclarar} tarjetas con deuda sin declarar: no entran en estos totales hasta que registres su saldo adeudado.`;
     },
 
     renderizarLista(cuentas) {
       const contenedor = document.getElementById('lista-cuentas');
       contenedor.innerHTML = '';
-
-      const hayActivas = cuentas.some(c => c.activa);
-      document.getElementById('cuentas-aviso').classList.toggle('d-none', hayActivas);
+      document.getElementById('cuentas-aviso').classList.toggle('d-none', cuentas.some(c => c.activa));
 
       if (cuentas.length === 0) {
         contenedor.innerHTML = '<div class="text-center text-muted py-4">Aún no tienes cuentas. Crea una para poder registrar tus gastos e ingresos.</div>';
@@ -52,10 +77,16 @@
       cuentas.forEach(c => contenedor.appendChild(this._crearTarjeta(c)));
     },
 
+    _linea(texto, clase) {
+      const linea = document.createElement('div');
+      linea.className = clase || 'small text-muted';
+      linea.textContent = texto;
+      return linea;
+    },
+
     _crearTarjeta(c) {
       const tarjeta = document.createElement('div');
       tarjeta.className = 'card shadow-sm' + (c.activa ? '' : ' opacity-75');
-
       const cuerpo = document.createElement('div');
       cuerpo.className = 'card-body d-flex justify-content-between align-items-start gap-2';
 
@@ -71,38 +102,47 @@
       titulo.appendChild(tipo);
       info.appendChild(titulo);
 
+      const dinero = v => Utilidades.formatearMoneda(v);
       if (c.tipo === 'Credito') {
-        const credito = document.createElement('div');
-        credito.className = 'small text-muted';
         const dia = d => (d === null || d === undefined) ? '—' : 'día ' + d;
-        credito.textContent = `Cupo: ${c.cupoTotal === null || c.cupoTotal === undefined ? '—' : Utilidades.formatearMoneda(c.cupoTotal)} · Corte: ${dia(c.diaCorte)} · Pago: ${dia(c.diaPago)}`;
-        info.appendChild(credito);
+        const cupoTotal = (c.cupoTotal === null || c.cupoTotal === undefined) ? '—' : dinero(c.cupoTotal);
+        if (c.deudaDeclarada) {
+          info.appendChild(this._linea(`Cupo total: ${cupoTotal} · Deuda: ${dinero(c.deuda)}`, 'small'));
+          const linea = this._linea(`Cupo disponible: ${c.cupoDisponible === null ? '—' : dinero(c.cupoDisponible)}`, 'small fw-semibold');
+          if (c.cupoDisponible !== null) Utilidades.marcarNegativo(linea, c.cupoDisponible);
+          info.appendChild(linea);
+          info.appendChild(this._linea(`Corte: ${dia(c.diaCorte)} · Pago: ${dia(c.diaPago)}`));
+          info.appendChild(this._linea(`Saldo declarado: ${dinero(c.saldoInicial)} al ${c.fechaSaldoInicial}`));
+        } else {
+          info.appendChild(this._linea('Deuda sin declarar', 'small fw-semibold text-warning'));
+          info.appendChild(this._linea(`Cupo total: ${cupoTotal} · Corte: ${dia(c.diaCorte)} · Pago: ${dia(c.diaPago)}`));
+          info.appendChild(this._linea(`Consumos registrados (solo referencia, no se asumen pendientes): ${dinero(c.consumosHistoricosReferencia || 0)}`));
+          info.appendChild(this._linea('Edita la tarjeta para declarar el saldo que adeudas.'));
+        }
+      } else {
+        const saldo = this._linea(`Saldo: ${dinero(c.saldo)}`, 'small fw-semibold');
+        Utilidades.marcarNegativo(saldo, c.saldo);
+        info.appendChild(saldo);
       }
 
-      const estado = document.createElement('div');
-      estado.className = 'small ' + (c.activa ? 'text-success' : 'text-muted');
       const n = c.cantidadMovimientos || 0;
-      estado.textContent = `${c.activa ? 'Activa' : 'Inactiva'} · ${n} movimiento${n === 1 ? '' : 's'}`;
-      info.appendChild(estado);
+      info.appendChild(this._linea(`${c.activa ? 'Activa' : 'Inactiva'} · ${n} movimiento${n === 1 ? '' : 's'}`, 'small ' + (c.activa ? 'text-success' : 'text-muted')));
 
       const acciones = document.createElement('div');
-      acciones.className = 'd-flex gap-1 flex-shrink-0';
-
+      acciones.className = 'd-flex flex-column flex-sm-row gap-1 flex-shrink-0';
       const editar = document.createElement('button');
       editar.type = 'button';
       editar.className = 'btn btn-sm btn-outline-secondary';
-      editar.title = 'Editar';
       editar.textContent = 'Editar';
       editar.addEventListener('click', () => CuentasService.editarCuenta(c.idCuenta));
-
       const alternar = document.createElement('button');
       alternar.type = 'button';
       alternar.className = 'btn btn-sm ' + (c.activa ? 'btn-outline-danger' : 'btn-outline-success');
       alternar.textContent = c.activa ? 'Desactivar' : 'Reactivar';
       alternar.addEventListener('click', () => CuentasService.cambiarEstado(c.idCuenta, !c.activa));
-
       acciones.appendChild(editar);
       acciones.appendChild(alternar);
+
       cuerpo.appendChild(info);
       cuerpo.appendChild(acciones);
       tarjeta.appendChild(cuerpo);
@@ -112,26 +152,39 @@
     abrirFormulario(cuenta) {
       document.getElementById('formulario-cuenta').reset();
       document.getElementById('cuenta-id-edicion').value = cuenta ? cuenta.idCuenta : '';
-      document.getElementById('modalCuentaLabel').textContent = cuenta ? 'Editar cuenta' : 'Nueva cuenta';
+      document.getElementById('modalGestionCuentasLabel').textContent = cuenta ? 'Editar cuenta' : 'Nueva cuenta';
       document.getElementById('btn-guardar-cuenta').textContent = cuenta ? 'Guardar cambios' : 'Guardar';
+      const hoy = Utilidades.fechaLocalISO();
+      document.getElementById('cuenta-fecha-saldo').max = hoy;       // el saldo no puede ser de una fecha futura
+      const info = document.getElementById('cuenta-deuda-actual-info');
+      info.textContent = '';
 
       if (cuenta) {
+        const esCredito = cuenta.tipo === 'Credito';
         document.getElementById('cuenta-nombre').value = cuenta.nombre;
         document.getElementById('cuenta-tipo').value = cuenta.tipo;
-        const esCredito = cuenta.tipo === 'Credito';
+        document.getElementById('cuenta-tipo-ayuda').classList.toggle('d-none', !(cuenta.cantidadMovimientos > 0));
         document.getElementById('cuenta-cupo').value = esCredito && cuenta.cupoTotal ? new Intl.NumberFormat('es-CO').format(cuenta.cupoTotal) : '';
         document.getElementById('cuenta-dia-corte').value = esCredito && cuenta.diaCorte ? cuenta.diaCorte : '';
         document.getElementById('cuenta-dia-pago').value = esCredito && cuenta.diaPago ? cuenta.diaPago : '';
+        if (esCredito && cuenta.deudaDeclarada) {
+          document.getElementById('cuenta-saldo-adeudado').value = new Intl.NumberFormat('es-CO').format(cuenta.saldoInicial);
+          document.getElementById('cuenta-fecha-saldo').value = cuenta.fechaSaldoInicial;
+          info.textContent = `Deuda actual calculada: ${Utilidades.formatearMoneda(cuenta.deuda)} (saldo declarado + gastos posteriores a esa fecha). Si no cambias estos dos datos, no se modifican.`;
+        } else if (esCredito) {
+          info.textContent = 'Esta tarjeta aún no tiene saldo declarado. Si lo dejas vacío seguirá sin declarar.';
+        }
         this.mostrarCamposCredito(esCredito);
       } else {
+        document.getElementById('cuenta-tipo-ayuda').classList.add('d-none');
+        document.getElementById('cuenta-fecha-saldo').value = hoy;     // por defecto: hoy (editable)
         this.mostrarCamposCredito(false);
       }
-      new bootstrap.Modal(document.getElementById('modalCuenta')).show();
+      this.mostrarVista('formulario');
     },
 
     cerrarFormulario() {
-      const instancia = bootstrap.Modal.getInstance(document.getElementById('modalCuenta'));
-      if (instancia) instancia.hide();
+      this.mostrarVista('lista');
     }
   };
 </script>

@@ -159,3 +159,115 @@ function esCategoriaIngreso_(categorias, idCategoria) {
   const info = categorias.find(c => c.idCategoria === idCategoria);
   return !!info && esTipoIngreso_(info.tipo);
 }
+
+
+/* ==========================================================================
+ * SALDOS POR CUENTA (Bloque A del módulo de cuentas)
+ * Funciones NUEVAS y puras. Las fórmulas de arriba (balance, aportes, pendientes,
+ * gastos por categoría) NO se tocaron: esto es un cálculo adicional, por cuenta.
+ *
+ * Todo se calcula SIEMPRE a partir de los movimientos persistidos (no hay saldos ni
+ * contadores guardados que puedan desincronizarse al editar/eliminar un movimiento o
+ * cambiarle la cuenta), y por ID_Cuenta (nunca por nombre: dos cuentas "Efectivo" de
+ * usuarios distintos son independientes).
+ *
+ * DÉBITO:   saldo = Σ ingresos de la cuenta − Σ gastos de la cuenta (historial completo,
+ *           cada movimiento cuenta UNA vez). Puede ser negativo (no se oculta ni se pone en 0).
+ *           Una cuenta nueva no tiene movimientos: su saldo es 0.
+ * CRÉDITO:  deuda = saldo declarado + Σ consumos con fecha POSTERIOR a la fecha de referencia.
+ *           (Lo declarado ya incluye los consumos anteriores o iguales a esa fecha: no se
+ *           vuelven a sumar.) cupo disponible = cupo total − deuda.
+ *           Una tarjeta SIN saldo declarado no tiene deuda ni cupo disponible calculados
+ *           (null): no se asume que todo su historial siga pendiente. Se informa el total
+ *           histórico solo como referencia.
+ *           Un ingreso en una tarjeta no es un movimiento válido: no se cuenta y se reporta.
+ * Un movimiento se aplica a la cuenta que tiene guardada (ID_Cuenta); si esa cuenta es de
+ * otro usuario que el que pagó, NO se reasigna: se reporta y se separa su efecto.
+ *
+ * entrada = { cuentas: [modelo de cuenta], movimientos: [modelo de movimiento], categorias: [...] }
+ * Devuelve { cuentas: [detalle por cuenta], anomalias: {...} }.
+ */
+function calcularSaldosCuentas_(entrada) {
+  const cuentas = entrada.cuentas || [];
+  const movimientos = entrada.movimientos || [];
+  const categorias = entrada.categorias || [];
+
+  const porId = new Map();
+  cuentas.forEach(c => {
+    const esCredito = c.tipo === 'Credito';
+    const saldoDeclarado = (esCredito && typeof c.saldoInicial === 'number' && isFinite(c.saldoInicial)) ? c.saldoInicial : null;
+    const fechaReferencia = (esCredito && typeof c.fechaSaldoInicial === 'string' && esFechaISOValida_(c.fechaSaldoInicial)) ? c.fechaSaldoInicial : null;
+    porId.set(c.idCuenta, {
+      idCuenta: c.idCuenta, idUsuario: c.idUsuario, nombre: c.nombre, tipo: c.tipo, activa: !!c.activa, esCredito,
+      cupoTotal: (c.cupoTotal === undefined ? null : c.cupoTotal),
+      cantidadMovimientos: 0, ingresos: 0, gastos: 0, efectoMovimientosAjenos: 0,
+      saldoDeclarado, fechaReferencia,
+      consumosPosteriores: 0, consumosAnteriores: 0, consumosHistoricosTotales: 0, ingresosEnTarjeta: 0
+    });
+  });
+
+  const anomalias = { idsDuplicados: [], sinCuentaValida: [], enCuentaDeOtroUsuario: [], ingresosEnTarjeta: [], consumosAnterioresALaReferencia: [] };
+  const vistos = new Set();
+
+  movimientos.forEach(m => {
+    if (vistos.has(m.id)) { anomalias.idsDuplicados.push(m.id); return; } // jamás se cuenta dos veces
+    vistos.add(m.id);
+
+    const c = porId.get(m.idCuenta);
+    if (!c) { anomalias.sinCuentaValida.push(m.id); return; }
+
+    const valor = Number(m.valor) || 0;
+    const esIngreso = esCategoriaIngreso_(categorias, m.idCategoria);
+    const ajeno = m.idUsuarioPagador !== c.idUsuario;
+    c.cantidadMovimientos++;
+    if (ajeno) anomalias.enCuentaDeOtroUsuario.push(m.id);
+
+    if (!c.esCredito) {
+      if (esIngreso) c.ingresos += valor; else c.gastos += valor;
+      if (ajeno) c.efectoMovimientosAjenos += (esIngreso ? valor : -valor);
+      return;
+    }
+
+    if (esIngreso) { c.ingresosEnTarjeta += valor; anomalias.ingresosEnTarjeta.push(m.id); return; }
+    c.consumosHistoricosTotales += valor;
+    if (c.fechaReferencia === null) return;                 // sin saldo declarado: solo referencia
+    if (m.fecha > c.fechaReferencia) c.consumosPosteriores += valor;
+    else { c.consumosAnteriores += valor; anomalias.consumosAnterioresALaReferencia.push(m.id); }
+  });
+
+  const detalle = [];
+  porId.forEach(c => {
+    c.declarada = c.esCredito && c.saldoDeclarado !== null && c.fechaReferencia !== null;
+    if (!c.esCredito) {
+      c.saldo = c.ingresos - c.gastos;
+    } else if (c.declarada) {
+      c.deuda = c.saldoDeclarado + c.consumosPosteriores;
+      c.cupoDisponible = c.cupoTotal === null ? null : c.cupoTotal - c.deuda;
+    } else {
+      c.deuda = null;
+      c.cupoDisponible = null;
+    }
+    detalle.push(c);
+  });
+  return { cuentas: detalle, anomalias };
+}
+
+/**
+ * Totales de UN usuario, solo con sus cuentas ACTIVAS:
+ *  - saldoDisponibleCuentas = Σ saldos de sus cuentas de DÉBITO (nunca suma cupos ni deuda);
+ *  - deudaTarjetas / cupoDisponibleTarjetas = Σ de sus tarjetas con saldo declarado (por separado);
+ *  - tarjetasSinDeclarar = tarjetas activas que no entran en esos totales.
+ */
+function resumenSaldosDeUsuario_(calculo, idUsuario) {
+  const r = { saldoDisponibleCuentas: 0, deudaTarjetas: 0, cupoDisponibleTarjetas: 0,
+    cantidadCuentasDebitoActivas: 0, cantidadTarjetasActivas: 0, tarjetasSinDeclarar: 0 };
+  calculo.cuentas.forEach(c => {
+    if (c.idUsuario !== idUsuario || !c.activa) return;
+    if (!c.esCredito) { r.saldoDisponibleCuentas += c.saldo; r.cantidadCuentasDebitoActivas++; return; }
+    r.cantidadTarjetasActivas++;
+    if (!c.declarada) { r.tarjetasSinDeclarar++; return; }
+    r.deudaTarjetas += c.deuda;
+    if (c.cupoDisponible !== null) r.cupoDisponibleTarjetas += c.cupoDisponible;
+  });
+  return r;
+}

@@ -1,33 +1,37 @@
 <script>
   /**
    * CuentasService.html
-   * Lógica de negocio de Configuración > Mis cuentas: carga la lista, abre el
-   * formulario de creación/edición, valida por comodidad (el servidor vuelve a
-   * validar TODO), y mantiene Store.catalogos.cuentas sincronizado para que los
-   * selectores de Movimientos reflejen de inmediato las cuentas nuevas,
-   * renombradas, desactivadas o reactivadas.
+   * Lógica de negocio de Configuración > Gestión de cuentas: abre la ventana, carga las cuentas del
+   * usuario con sus saldos/deuda (calculados en el servidor desde los movimientos), maneja el
+   * formulario de creación/edición (con la validación de comodidad; el servidor vuelve a validar
+   * TODO) y mantiene Store.catalogos.cuentas sincronizado para que los selectores de Movimientos
+   * reflejen de inmediato las cuentas nuevas, renombradas, desactivadas o reactivadas.
    *
-   * Las cuentas no se eliminan: se desactivan. Una cuenta inactiva deja de
-   * ofrecerse en movimientos NUEVOS, pero el historial sigue mostrándola.
+   * Las cuentas no se eliminan: se desactivan. Una cuenta inactiva deja de ofrecerse en movimientos
+   * NUEVOS y de contar en el saldo disponible, pero el historial sigue mostrándola.
+   * El cliente nunca envía el ID de la cuenta en el cuerpo ni el propietario: los decide el servidor.
    */
   const CuentasService = {
     // Se llama una sola vez al arrancar (App.html): los elementos de Configuración ya existen en el DOM.
     configurar() {
       CuentasUI.llenarTipos();
+      document.getElementById('btn-abrir-gestion-cuentas').addEventListener('click', () => this.abrirGestion());
       document.getElementById('btn-nueva-cuenta').addEventListener('click', () => this.nuevaCuenta());
       document.getElementById('btn-guardar-cuenta').addEventListener('click', () => this.guardar());
+      document.getElementById('btn-cancelar-cuenta').addEventListener('click', () => CuentasUI.cerrarFormulario());
       document.getElementById('cuenta-tipo').addEventListener('change', e => CuentasUI.mostrarCamposCredito(e.target.value === 'Credito'));
     },
 
-    // Primera visita a Configuración: carga la lista (con la cantidad de movimientos de cada cuenta).
-    alMostrarConfiguracion() {
-      if (!Store.meta.cuentasCargadas) this.recargar();
+    // Cada vez que se abre la ventana se recarga: los saldos cambian con cada movimiento que se registra.
+    abrirGestion() {
+      CuentasUI.abrirGestion();
+      this.recargar();
     },
 
     recargar() {
       CuentasUI.mostrarCargando();
       CuentasAPI.obtener(
-        (respuesta) => this.procesarRespuesta(respuesta),
+        (respuesta) => this.procesarRespuesta(respuesta, false),
         (error) => {
           CuentasUI.mostrarErrorDeCarga();
           Utilidades.mostrarError('No se pudieron cargar tus cuentas: ' + error.message);
@@ -35,12 +39,21 @@
       );
     },
 
-    procesarRespuesta(respuesta) {
+    // refrescarInicio: tras crear/editar/activar/desactivar, el "Saldo disponible" de Inicio puede cambiar.
+    procesarRespuesta(respuesta, refrescarInicio) {
       const propias = (respuesta && respuesta.cuentas) || [];
       Store.cuentasUsuario = propias;
+      Store.resumenCuentas = (respuesta && respuesta.resumen) || null;
       this._sincronizarCatalogo(propias);
       Store.meta.cuentasCargadas = true;
+      if (Store.resumenCuentas) CuentasUI.renderizarResumen(Store.resumenCuentas);
       CuentasUI.renderizarLista(propias);
+      if (refrescarInicio) {
+        DashboardAPI.refrescarResumen(
+          (resumen) => DashboardService.procesarResumenActualizado(resumen),
+          (error) => console.error('No se pudo refrescar el resumen:', error)
+        );
+      }
     },
 
     // Reemplaza en el catálogo global SOLO las cuentas del usuario actual (las de los demás no cambian).
@@ -59,23 +72,28 @@
       if (cuenta) CuentasUI.abrirFormulario(cuenta);
     },
 
-    /** Lee el formulario. El ID y el propietario NO forman parte de lo que se envía. */
+    /** Lee el formulario. El ID de la cuenta y el propietario NO forman parte de lo que se envía. */
     leerFormulario() {
       const tipo = document.getElementById('cuenta-tipo').value;
       const numeroODefecto = (id) => {
         const texto = document.getElementById(id).value;
         return texto === '' ? null : Number(texto.replace(/\./g, ''));
       };
-      return {
+      const datos = {
         nombre: document.getElementById('cuenta-nombre').value.trim(),
         tipo,
         cupoTotal: tipo === 'Credito' ? numeroODefecto('cuenta-cupo') : null,
         diaCorte: tipo === 'Credito' ? numeroODefecto('cuenta-dia-corte') : null,
         diaPago: tipo === 'Credito' ? numeroODefecto('cuenta-dia-pago') : null
       };
+      if (tipo === 'Credito') {
+        datos.saldoAdeudado = numeroODefecto('cuenta-saldo-adeudado');
+        datos.fechaSaldo = document.getElementById('cuenta-fecha-saldo').value || null;
+      }
+      return datos;
     },
 
-    _errorDeFormulario(datos) {
+    _errorDeFormulario(datos, esEdicion) {
       if (!datos.nombre) return 'Escribe un nombre para la cuenta.';
       if (!datos.tipo) return 'Selecciona el tipo de cuenta (Débito o Crédito).';
       if (datos.tipo === 'Credito') {
@@ -83,6 +101,15 @@
         const diaValido = d => Number.isInteger(d) && d >= 1 && d <= 31;
         if (!diaValido(datos.diaCorte)) return 'El día de corte debe estar entre 1 y 31.';
         if (!diaValido(datos.diaPago)) return 'El día de pago debe estar entre 1 y 31.';
+
+        const hayAlguno = datos.saldoAdeudado !== null || datos.fechaSaldo !== null;
+        if (!esEdicion || hayAlguno) {
+          if (datos.saldoAdeudado === null || datos.fechaSaldo === null) {
+            return 'Indica el saldo total que adeudas actualmente en la tarjeta (puede ser 0) y la fecha a la que corresponde.';
+          }
+          if (Number.isNaN(datos.saldoAdeudado) || datos.saldoAdeudado < 0) return 'El saldo adeudado debe ser un número igual o mayor que cero.';
+          if (datos.fechaSaldo > Utilidades.fechaLocalISO()) return 'La fecha del saldo no puede ser futura.';
+        }
       }
       return null;
     },
@@ -90,14 +117,14 @@
     guardar() {
       const idEdicion = document.getElementById('cuenta-id-edicion').value;
       const datos = this.leerFormulario();
-      const error = this._errorDeFormulario(datos);
+      const error = this._errorDeFormulario(datos, !!idEdicion);
       if (error) { Utilidades.mostrarError(error); return; }
 
       MovimientosUI.bloquearBoton('btn-guardar-cuenta', true);
       const alTerminar = (respuesta) => {
         MovimientosUI.bloquearBoton('btn-guardar-cuenta', false);
         CuentasUI.cerrarFormulario();
-        this.procesarRespuesta(respuesta);
+        this.procesarRespuesta(respuesta, true);
       };
       const alFallar = (e) => {
         MovimientosUI.bloquearBoton('btn-guardar-cuenta', false);
@@ -112,13 +139,13 @@
       const cuenta = Store.cuentasUsuario.find(c => c.idCuenta === idCuenta);
       if (!cuenta) return;
       if (!activa) {
-        const detalle = cuenta.cantidadMovimientos > 0
-          ? ` Sus ${cuenta.cantidadMovimientos} movimiento(s) se conservan tal cual.` : '';
-        if (!confirm(`¿Desactivar "${cuenta.nombre}"? Dejará de aparecer al registrar movimientos nuevos.${detalle} Podrás reactivarla cuando quieras.`)) return;
+        const movimientos = cuenta.cantidadMovimientos > 0 ? ` Sus ${cuenta.cantidadMovimientos} movimiento(s) se conservan tal cual.` : '';
+        const saldo = (cuenta.tipo === 'Debito' && cuenta.saldo) ? ` Su saldo de ${Utilidades.formatearMoneda(cuenta.saldo)} dejará de contar en tu saldo disponible.` : '';
+        if (!confirm(`¿Desactivar "${cuenta.nombre}"? Dejará de aparecer al registrar movimientos nuevos.${movimientos}${saldo} Podrás reactivarla cuando quieras.`)) return;
       }
       CuentasAPI.cambiarEstado(
         idCuenta, activa,
-        (respuesta) => this.procesarRespuesta(respuesta),
+        (respuesta) => this.procesarRespuesta(respuesta, true),
         (e) => Utilidades.mostrarError('No se pudo cambiar el estado de la cuenta: ' + e.message)
       );
     }

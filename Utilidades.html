@@ -59,6 +59,28 @@
       return !!info && info.tipo === 'Ingreso';
     },
 
+    /**
+     * Pinta en ROJO un importe negativo (saldo en débito o cupo disponible por debajo de cero).
+     * Un valor negativo nunca se oculta ni se convierte en cero. Sobre fondos oscuros (tarjeta de
+     * Inicio) se usa un rojo claro legible; el resto de la aplicación usa text-danger.
+     */
+    marcarNegativo(elemento, valor, sobreOscuro) {
+      const negativo = Number(valor) < 0;
+      elemento.classList.toggle('text-danger', negativo && !sobreOscuro);
+      elemento.classList.toggle('fw-bold', negativo);
+      elemento.style.color = (negativo && sobreOscuro) ? '#ff8a99' : '';
+    },
+
+    /** Aviso NO bloqueante (la operación ya se realizó): p. ej. un gasto que supera el cupo de la tarjeta. */
+    mostrarAdvertencia(mensaje) {
+      const contenedor = document.getElementById('banner-aviso');
+      if (!contenedor) { console.warn(mensaje); return; }
+      contenedor.textContent = mensaje;
+      contenedor.classList.remove('d-none');
+      clearTimeout(this._timeoutAviso);
+      this._timeoutAviso = setTimeout(() => contenedor.classList.add('d-none'), 8000);
+    },
+
     mostrarError(mensaje) {
       console.error(mensaje);
       const contenedor = document.getElementById('banner-error');

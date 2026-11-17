@@ -26,6 +26,9 @@
       presupuestos: []
     },
     movimientos: [],
+    // Gestión de cuentas: las cuentas del usuario con sus saldos/deuda calculados y los totales.
+    cuentasUsuario: [],
+    resumenCuentas: null,
     shared: {
       esMultiUsuario: false
     },
@@ -35,7 +38,8 @@
       historialOffset: 0,
       historialHayMas: true,
       tamanoPagina: 10,
-      analisisCargado: false
+      analisisCargado: false,
+      cuentasCargadas: false
     }
   };
 </script>

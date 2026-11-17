@@ -44,9 +44,11 @@
         .map(s => ({ id: s.idSubcategoria, nombre: this._etiqueta(s.subcategoria, s.activa) }));
     },
 
-    opcionesCuentas(idUsuarioDuenio, idActual) {
+    // soloDebito: un ingreso solo puede ir a una cuenta de débito (una tarjeta es deuda, no dinero disponible).
+    // La cuenta actual de un movimiento que se está editando se conserva siempre (referencia histórica).
+    opcionesCuentas(idUsuarioDuenio, idActual, soloDebito) {
       return Store.catalogos.cuentas
-        .filter(c => (c.idUsuario === idUsuarioDuenio && c.activa) || c.idCuenta === idActual)
+        .filter(c => (c.idUsuario === idUsuarioDuenio && c.activa && (!soloDebito || c.tipo === 'Debito')) || c.idCuenta === idActual)
         .map(c => ({ id: c.idCuenta, nombre: this._etiqueta(c.nombre, c.activa) }));
     },
 
@@ -71,7 +73,7 @@
 
     refrescarCuentasIngreso(idUsuarioDuenio, idCuentaActual) {
       const dueno = Utilidades.aId(idUsuarioDuenio);
-      MovimientosUI.llenarSelect('ingreso-cuenta', dueno === null ? [] : this.opcionesCuentas(dueno, idCuentaActual || null), 'Selecciona una cuenta...');
+      MovimientosUI.llenarSelect('ingreso-cuenta', dueno === null ? [] : this.opcionesCuentas(dueno, idCuentaActual || null, true), 'Selecciona una cuenta...');
     },
 
     filtrarSubcategorias(idCategoria, idSubcategoriaActual) {
@@ -149,10 +151,12 @@
 
       MovimientosUI.bloquearBoton('btn-guardar-gasto', true);
 
-      const alTerminar = () => {
+      const alTerminar = (guardado) => {
         MovimientosUI.bloquearBoton('btn-guardar-gasto', false);
         MovimientosUI.cerrarFormulario('gasto');
         this.despuesDeGuardar();
+        // Aviso NO bloqueante (p. ej. el gasto superó el cupo de la tarjeta): el gasto ya quedó guardado.
+        ((guardado && guardado.advertencias) || []).forEach(a => Utilidades.mostrarAdvertencia(a));
       };
       const alFallar = (error) => {
         MovimientosUI.bloquearBoton('btn-guardar-gasto', false);

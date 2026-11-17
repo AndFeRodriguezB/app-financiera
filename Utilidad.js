@@ -350,3 +350,13 @@ function nombreUsuarioDeId_(indice, id) {
 function nombreCuentaDeId_(indice, id) { const c = indice.cuentas.get(id); return c ? c.nombre : ''; }
 function nombreCategoriaDeId_(indice, id) { const c = indice.categorias.get(id); return c ? c.categoria : ''; }
 function nombreSubcategoriaDeId_(indice, id) { const s = indice.subcategorias.get(id); return s ? s.subcategoria : ''; }
+
+/**
+ * Importe en pesos para MENSAJES del servidor ("$1.234.567", "-$500"). Se arma a mano
+ * (separador de miles ".") para no depender de Intl en el servidor.
+ */
+function formatearPesos_(valor) {
+  const n = Math.round(Number(valor) || 0);
+  const digitos = String(Math.abs(n)).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return (n < 0 ? '-$' : '$') + digitos;
+}

@@ -254,8 +254,10 @@ function reemplazarContenidoTabla_(esquema, modelos, opciones) {
     if (!opciones.crearSiNoExiste) throw new Error(`No existe la hoja "${esquema.hoja}".`);
     hoja = ss.insertSheet(esquema.hoja);
   }
-  const encabezados = esquema.columnas.map(c => c.encabezado);
-  const filas = modelos.map(m => esquema.columnas.map(c => valorParaCelda_(m[c.clave], c.tipo)));
+  // Solo las columnas REQUERIDAS: las opcionales (requerida:false) no se crean ni se escriben aquí.
+  const columnas = esquema.columnas.filter(c => c.requerida !== false);
+  const encabezados = columnas.map(c => c.encabezado);
+  const filas = modelos.map(m => columnas.map(c => valorParaCelda_(m[c.clave], c.tipo)));
   hoja.clearContents();
   hoja.getRange(1, 1, 1 + filas.length, encabezados.length).setValues([encabezados].concat(filas));
   SpreadsheetApp.flush();
@@ -266,8 +268,32 @@ function crearHojaVaciaDeEsquema_(esquema) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   if (ss.getSheetByName(esquema.hoja)) return false;
   const hoja = ss.insertSheet(esquema.hoja);
-  const encabezados = esquema.columnas.map(c => c.encabezado);
+  const encabezados = esquema.columnas.filter(c => c.requerida !== false).map(c => c.encabezado);
   hoja.getRange(1, 1, 1, encabezados.length).setValues([encabezados]);
   SpreadsheetApp.flush();
   return true;
+}
+
+/**
+ * Agrega al FINAL de la fila de encabezados las columnas indicadas (por clave del esquema)
+ * que aún no existan. Idempotente y NO destructiva: no toca ninguna fila de datos ni las
+ * columnas existentes. Exige que las columnas requeridas del esquema ya estén presentes.
+ * Devuelve { agregadas: [encabezados], yaExistian: [encabezados] }.
+ */
+function agregarColumnasFaltantes_(esquema, claves) {
+  const hoja = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(esquema.hoja);
+  if (!hoja) throw new Error(`No existe la hoja "${esquema.hoja}".`);
+  const ancho = hoja.getLastColumn();
+  if (hoja.getLastRow() < 1 || ancho < 1) throw new Error(`La hoja "${esquema.hoja}" está vacía (sin encabezados).`);
+  const encabezados = hoja.getRange(1, 1, 1, ancho).getValues()[0];
+  const loc = localizarColumnas_(esquema, encabezados);
+  if (loc.faltantes.length) throw errorEstructura_(esquema, loc.faltantes);
+
+  const pedidas = esquema.columnas.filter(c => claves.includes(c.clave));
+  const nuevas = pedidas.filter(c => !(c.clave in loc.indices));
+  if (nuevas.length) {
+    hoja.getRange(1, ancho + 1, 1, nuevas.length).setValues([nuevas.map(c => c.encabezado)]);
+    SpreadsheetApp.flush();
+  }
+  return { agregadas: nuevas.map(c => c.encabezado), yaExistian: pedidas.filter(c => c.clave in loc.indices).map(c => c.encabezado) };
 }

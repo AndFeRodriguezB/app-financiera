@@ -5,6 +5,11 @@
  *
  * Estructura:
  *   ID_Cuenta | Nombre | Tipo | Cupo_Total | Dia_Corte | Dia_Pago | ID_Usuario | Estado
+ *   + (OPCIONALES, solo para tarjetas de CRÉDITO) Saldo_Inicial | Fecha_Saldo_Inicial
+ *     = saldo adeudado que la persona declara y la fecha a la que corresponde. Las crea,
+ *     sin tocar datos, prepararColumnasCuentas() (PrepararEstructura.js). Si no existen, el
+ *     sistema funciona igual y las tarjetas se muestran como "Deuda sin declarar".
+ *     Para cuentas de DÉBITO nunca se usan: su saldo sale solo de los movimientos.
  *
  * Reglas de integridad que este repositorio garantiza (independientes de la UI):
  *  - ID_Cuenta lo genera SIEMPRE este archivo (entero 1, 2, 3, ...) con
@@ -20,7 +25,8 @@
  *
  * Modelo devuelto:
  *   { idCuenta (int), nombre, tipo ('Debito'|'Credito'), cupoTotal, diaCorte, diaPago,
- *     idUsuario (int | null si la celda está vacía), estado (1|0), activa (bool) }
+ *     idUsuario (int | null si la celda está vacía), estado (1|0), activa (bool),
+ *     saldoInicial (número | null), fechaSaldoInicial ('AAAA-MM-DD' | null) }
  */
 
 const ESQUEMA_CUENTAS_ = {
@@ -34,7 +40,9 @@ const ESQUEMA_CUENTAS_ = {
     { clave: 'diaCorte', encabezado: 'Dia_Corte', tipo: 'numero' },
     { clave: 'diaPago', encabezado: 'Dia_Pago', tipo: 'numero' },
     { clave: 'idUsuario', encabezado: 'ID_Usuario', tipo: 'id' },
-    { clave: 'estado', encabezado: 'Estado', tipo: 'estado' }
+    { clave: 'estado', encabezado: 'Estado', tipo: 'estado' },
+    { clave: 'saldoInicial', encabezado: 'Saldo_Inicial', tipo: 'numero', requerida: false },
+    { clave: 'fechaSaldoInicial', encabezado: 'Fecha_Saldo_Inicial', tipo: 'fecha', requerida: false }
   ]
 };
 
@@ -42,9 +50,11 @@ const ESQUEMA_CUENTAS_ = {
 const CLAVE_CONTADOR_CUENTA_ = 'CUENTA';
 
 // El nombre lo escribe una persona: se fuerza formato texto para que Sheets jamás lo interprete como fórmula (=...).
-const CLAVES_TEXTO_CUENTAS_ = ['nombre'];
+const CLAVES_TEXTO_CUENTAS_ = ['nombre', 'fechaSaldoInicial'];
 
-const CAMPOS_EDITABLES_CUENTA_ = ['nombre', 'tipo', 'cupoTotal', 'diaCorte', 'diaPago', 'estado'];
+const MENSAJE_FALTAN_COLUMNAS_DEUDA_ = 'Falta preparar la hoja Cuentas para guardar el saldo adeudado de las tarjetas. Ejecuta prepararColumnasCuentas() una vez desde el editor de Apps Script y vuelve a intentarlo.';
+
+const CAMPOS_EDITABLES_CUENTA_ = ['nombre', 'tipo', 'cupoTotal', 'diaCorte', 'diaPago', 'estado', 'saldoInicial', 'fechaSaldoInicial'];
 
 /** 'Débito', 'debito', 'DEBITO' => 'Debito'; 'Crédito' => 'Credito'. Otro texto se conserva. */
 function canonizarTipoCuenta_(tipo) {
@@ -69,8 +79,21 @@ function modeloCuenta_(fila) {
     diaPago: fila.diaPago,
     idUsuario: fila.idUsuario,
     estado: fila.estado,
-    activa: fila.estado === 1
+    activa: fila.estado === 1,
+    saldoInicial: fila.saldoInicial === undefined ? null : fila.saldoInicial,
+    fechaSaldoInicial: fila.fechaSaldoInicial === undefined ? null : fila.fechaSaldoInicial
   };
+}
+
+/** ¿La hoja ya tiene las dos columnas de saldo declarado? (tabla = resultado de abrirTabla_/leerTablaEsquema_) */
+function tablaTieneColumnasDeuda_(tabla) {
+  return ('saldoInicial' in tabla.indices) && ('fechaSaldoInicial' in tabla.indices);
+}
+
+/** Si se intenta guardar un saldo/fecha declarados y faltan las columnas, falla en voz alta (nunca se pierde en silencio). */
+function exigirColumnasDeudaSiHaceFalta_(tabla, datos) {
+  const quiere = (datos.saldoInicial !== undefined && datos.saldoInicial !== null) || (datos.fechaSaldoInicial !== undefined && datos.fechaSaldoInicial !== null);
+  if (quiere && !tablaTieneColumnasDeuda_(tabla)) throw new Error(MENSAJE_FALTAN_COLUMNAS_DEUDA_);
 }
 
 function leerCuentasConFila_() {
@@ -114,6 +137,7 @@ function insertarCuenta_(datosOPreparar) {
     const idUsuario = aEnteroId_(datos.idUsuario);
     if (idUsuario === null) throw new Error('La cuenta necesita un ID_Usuario propietario (entero positivo).');
 
+    exigirColumnasDeudaSiHaceFalta_(tabla, datos);
     const idCuenta = reservarIdSecuencial_(CLAVE_CONTADOR_CUENTA_, tabla.cuentas.map(c => c.idCuenta), 0);
     const modelo = {
       idCuenta,
@@ -123,7 +147,9 @@ function insertarCuenta_(datosOPreparar) {
       diaCorte: datos.diaCorte === undefined ? null : datos.diaCorte,
       diaPago: datos.diaPago === undefined ? null : datos.diaPago,
       idUsuario,
-      estado: datos.estado === undefined ? 1 : normalizarEstado_(datos.estado)
+      estado: datos.estado === undefined ? 1 : normalizarEstado_(datos.estado),
+      saldoInicial: datos.saldoInicial === undefined ? null : datos.saldoInicial,
+      fechaSaldoInicial: datos.fechaSaldoInicial === undefined ? null : datos.fechaSaldoInicial
     };
     agregarFilasAlFinal_(tabla, [construirFilaDesdeModelo_(tabla, modelo)], CLAVES_TEXTO_CUENTAS_);
     return Object.assign({}, modelo, { activa: modelo.estado === 1 });
@@ -161,6 +187,7 @@ function actualizarCuentaPorId_(idCuenta, cambiosOPreparar) {
       if (!permitidos.nombre) throw new Error('La cuenta necesita un nombre.');
     }
     if ('tipo' in permitidos) permitidos.tipo = canonizarTipoCuenta_(permitidos.tipo);
+    exigirColumnasDeudaSiHaceFalta_(tabla, permitidos);
 
     const filaBase = leerFilaCruda_(tabla, actual._fila);
     const fila = construirFilaDesdeModelo_(tabla, permitidos, filaBase);
@@ -181,4 +208,4 @@ function cambiarEstadoCuentaPorId_(idCuenta, activa) {
 /** Solo migración de catálogos: reescribe toda la hoja con la estructura nueva. */
 function reemplazarCuentas_(modelos) {
   reemplazarContenidoTabla_(ESQUEMA_CUENTAS_, modelos, { crearSiNoExiste: true });
-} 
+}

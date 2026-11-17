@@ -119,6 +119,11 @@ function validarMovimientoParaGuardar_(datos, contexto) {
   if (!cuenta) throw errorValidacion_('La cuenta seleccionada no existe.');
   const cuentaSinCambio = !!existente && existente.idCuenta === idCuenta;
   if (!cuenta.activa && !cuentaSinCambio) throw errorValidacion_('La cuenta seleccionada está inactiva.');
+  // Un ingreso ordinario no puede ir a una tarjeta de crédito (la tarjeta es deuda, no dinero disponible).
+  // Un ingreso HISTÓRICO que ya estaba en una tarjeta y no se cambia se conserva (el diagnóstico lo reporta).
+  if (esIngreso && esCuentaCredito_(cuenta) && !cuentaSinCambio) {
+    throw errorValidacion_('Los ingresos solo pueden registrarse en cuentas de débito, no en tarjetas de crédito.');
+  }
   const parSinCambio = cuentaSinCambio && existente.idUsuarioPagador === idUsuarioPagador;
   if (cuenta.idUsuario !== idUsuarioPagador && !parSinCambio) {
     throw errorValidacion_(esIngreso
@@ -181,9 +186,13 @@ const CUPO_MAXIMO_CUENTA_ = 1e13;
  * @param {Object} datos     Lo que envía el cliente: { nombre, tipo, cupoTotal, diaCorte, diaPago }.
  *                           El cliente NO decide ni el ID ni el propietario: si envía un
  *                           idUsuario distinto del usuario autenticado se rechaza.
- * @param {Object} contexto  { idUsuarioActual, cuentasExistentes (todas las del libro), existente (modelo | null) }
- * @returns {Object} { nombre, tipo, cupoTotal, diaCorte, diaPago } (crédito: los 3 campos obligatorios;
- *                   débito: null en los 3).
+ * @param {Object} contexto  { idUsuarioActual, cuentasExistentes (todas las del libro), existente (modelo | null),
+ *                           hoy ('AAAA-MM-DD', el servidor lo aporta para mantener la función pura) }
+ *   Para tarjetas de crédito el cliente envía además { saldoAdeudado, fechaSaldo }: el saldo total que
+ *   la persona declara deber y la fecha a la que corresponde (no puede ser futura).
+ * @returns {Object} { nombre, tipo, cupoTotal, diaCorte, diaPago, saldoInicial?, fechaSaldoInicial? }
+ *                   crédito: cupo y días obligatorios; saldoInicial/fechaSaldoInicial solo se incluyen si se
+ *                   declaran (al editar, si no se envían NO cambian). Débito: todo en null.
  */
 function validarCuentaParaGuardar_(datos, contexto) {
   if (!datos || typeof datos !== 'object') throw errorValidacion_('No se recibieron datos de la cuenta.');
@@ -223,7 +232,7 @@ function validarCuentaParaGuardar_(datos, contexto) {
   if (tipo !== 'Debito' && tipo !== 'Credito') throw errorValidacion_('El tipo de cuenta debe ser Débito o Crédito.');
 
   // --- Datos de crédito
-  if (tipo === 'Debito') return { nombre, tipo, cupoTotal: null, diaCorte: null, diaPago: null };
+  if (tipo === 'Debito') return { nombre, tipo, cupoTotal: null, diaCorte: null, diaPago: null, saldoInicial: null, fechaSaldoInicial: null };
 
   const cupo = typeof datos.cupoTotal === 'number' ? datos.cupoTotal : parsearNumeroCOP_(datos.cupoTotal);
   if (cupo === null || !isFinite(cupo) || cupo <= 0 || cupo > CUPO_MAXIMO_CUENTA_) {
@@ -234,5 +243,50 @@ function validarCuentaParaGuardar_(datos, contexto) {
     if (n === null || n > 31) throw errorValidacion_(`El día de ${etiqueta} debe ser un número entero entre 1 y 31.`);
     return n;
   };
-  return { nombre, tipo, cupoTotal: cupo, diaCorte: dia(datos.diaCorte, 'corte'), diaPago: dia(datos.diaPago, 'pago') };
+  const credito = { nombre, tipo, cupoTotal: cupo, diaCorte: dia(datos.diaCorte, 'corte'), diaPago: dia(datos.diaPago, 'pago') };
+  return Object.assign(credito, validarDeclaracionDeuda_(datos, existente, contexto.hoy));
+}
+
+/**
+ * Saldo adeudado declarado de una tarjeta y su fecha de referencia. PURA.
+ *  - Al CREAR (o convertir una cuenta sin movimientos en tarjeta) son obligatorios: el saldo (0 es válido,
+ *    pero hay que declararlo) y su fecha.
+ *  - Al EDITAR una tarjeta que ya es tarjeta: si no se envían, NO cambian (se devuelve {}); si se envía uno,
+ *    hay que enviar ambos. Una tarjeta sin declarar puede seguir sin declarar.
+ *  - Saldo: número >= 0. Fecha: AAAA-MM-DD real y no futura.
+ */
+function validarDeclaracionDeuda_(datos, existente, hoy) {
+  const vacio = v => v === undefined || v === null || (typeof v === 'string' && v.trim() === '');
+  const sinSaldo = vacio(datos.saldoAdeudado);
+  const sinFecha = vacio(datos.fechaSaldo);
+  const yaEraTarjeta = !!existente && existente.tipo === 'Credito';
+
+  if (sinSaldo && sinFecha) {
+    if (!yaEraTarjeta) throw errorValidacion_('Indica el saldo total que adeudas actualmente en la tarjeta (puede ser 0) y la fecha a la que corresponde.');
+    return {};
+  }
+  if (sinSaldo || sinFecha) throw errorValidacion_('Indica juntos el saldo adeudado y la fecha a la que corresponde.');
+
+  const saldo = typeof datos.saldoAdeudado === 'number' ? datos.saldoAdeudado : parsearNumeroCOP_(datos.saldoAdeudado);
+  if (saldo === null || !isFinite(saldo) || saldo < 0 || saldo > CUPO_MAXIMO_CUENTA_) {
+    throw errorValidacion_('El saldo adeudado debe ser un número igual o mayor que cero.');
+  }
+  const fecha = typeof datos.fechaSaldo === 'string' ? datos.fechaSaldo.trim() : '';
+  if (!esFechaISOValida_(fecha)) throw errorValidacion_('La fecha del saldo no es válida. Usa el formato AAAA-MM-DD.');
+  if (hoy && fecha > hoy) throw errorValidacion_('La fecha del saldo no puede ser futura.');
+  return { saldoInicial: saldo, fechaSaldoInicial: fecha };
+}
+
+/** El tipo de una cuenta con movimientos no puede cambiar: reinterpretaría todo su historial. PURA. */
+function validarCambioDeTipoCuenta_(existente, nuevoTipo, cantidadMovimientos) {
+  if (existente && existente.tipo !== nuevoTipo && cantidadMovimientos > 0) {
+    throw errorValidacion_('No se puede cambiar el tipo de una cuenta que ya tiene movimientos. Crea una cuenta nueva del tipo que necesitas y desactiva esta.');
+  }
+}
+
+/** Una tarjeta con deuda no se puede desactivar (inactiva ya no se podría pagar). PURA. */
+function validarDesactivacionCuenta_(calculo, nombre) {
+  if (calculo && calculo.esCredito && calculo.declarada && calculo.deuda > 0) {
+    throw errorValidacion_(`No puedes desactivar la tarjeta "${nombre}": tiene una deuda de ${formatearPesos_(calculo.deuda)}. Cuando la pagues, actualiza su saldo adeudado a 0 y entonces podrás desactivarla.`);
+  }
 }

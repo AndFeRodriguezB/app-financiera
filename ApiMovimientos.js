@@ -14,6 +14,9 @@
  *    resueltos desde los catálogos (nombreCategoria, nombreCuenta, ...), solo
  *    para mostrar. Los nombres nunca se usan como llave.
  *
+ * AVISOS (no bloquean): si un gasto deja una tarjeta de crédito por encima de su cupo, la respuesta
+ * incluye `advertencias` con el mensaje. El gasto se guarda igual (igual que un saldo de débito negativo).
+ *
  * SEGURIDAD: toda operación de escritura identifica al usuario con
  * obtenerUsuarioActualEstricto_ (un usuario no registrado produce error, nunca
  * cae a usuarios[0]) y revalida todo en el backend. Los permisos de quién puede
@@ -42,6 +45,19 @@ function enriquecerMovimiento_(m, indice) {
   };
 }
 
+/**
+ * Mensajes de aviso si la tarjeta usada por un GASTO quedó con deuda mayor que su cupo.
+ * Solo informa: nunca bloquea la operación.
+ */
+function advertenciasDeCupo_(movimiento, catalogos) {
+  if (movimiento.esIngreso) return [];
+  const tarjeta = catalogos.cuentas.find(c => c.idCuenta === movimiento.idCuenta && c.tipo === 'Credito');
+  if (!tarjeta) return [];
+  const calculo = calcularSaldosCuentas_({ cuentas: [tarjeta], movimientos: obtenerTodosLosMovimientos_(), categorias: catalogos.categorias }).cuentas[0];
+  if (!calculo.declarada || calculo.cupoTotal === null || calculo.deuda <= calculo.cupoTotal) return [];
+  return [`La tarjeta "${calculo.nombre}" supera su cupo: deuda ${formatearPesos_(calculo.deuda)} de ${formatearPesos_(calculo.cupoTotal)} (cupo disponible ${formatearPesos_(calculo.cupoDisponible)}).`];
+}
+
 function registrarMovimiento(datos) {
   const catalogos = obtenerCatalogos_();
   const usuarioActual = obtenerUsuarioActualEstricto_(catalogos.usuarios);
@@ -49,7 +65,8 @@ function registrarMovimiento(datos) {
     catalogos, idUsuarioActual: obtenerIdUsuario_(usuarioActual), existente: null
   });
   const guardado = insertarMovimiento_(modelo);
-  return enriquecerMovimiento_(guardado, crearIndiceCatalogos_(catalogos));
+  const enriquecido = enriquecerMovimiento_(guardado, crearIndiceCatalogos_(catalogos));
+  return Object.assign(enriquecido, { advertencias: advertenciasDeCupo_(enriquecido, catalogos) });
 }
 
 function actualizarMovimiento(id, datos) {
@@ -63,7 +80,8 @@ function actualizarMovimiento(id, datos) {
   });
   const actualizado = actualizarMovimientoPorId_(existente.id, modelo);
   if (!actualizado) return null;
-  return enriquecerMovimiento_(actualizado, crearIndiceCatalogos_(catalogos));
+  const enriquecido = enriquecerMovimiento_(actualizado, crearIndiceCatalogos_(catalogos));
+  return Object.assign(enriquecido, { advertencias: advertenciasDeCupo_(enriquecido, catalogos) });
 }
 
 function eliminarMovimiento(id) {
